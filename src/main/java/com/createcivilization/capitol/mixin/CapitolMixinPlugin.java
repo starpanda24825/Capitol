@@ -23,14 +23,13 @@ public class CapitolMixinPlugin implements IMixinConfigPlugin {
 
 	private final Set<String> presentMods = new HashSet<>();
 
-	private boolean createPresent;
-
 	@Override
 	public void onLoad(String mixinPackage) {
 		for (String modId : PACKAGE_TO_MOD.values()) {
-			if (LoadingModList.get().getModFileById(modId) != null)
-				Capitol.LOGGER.info("ADDING MOD {}", modId);
+			if (LoadingModList.get().getModFileById(modId) != null) {
+				Capitol.LOGGER.info("Found {} - loading its mixins", modId);
 				presentMods.add(modId);
+			}
 		}
 	}
 
