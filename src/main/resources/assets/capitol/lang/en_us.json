@@ -46,6 +46,7 @@
 	"commands.capitol.team.invite.no_permission": "You do not have permission to invite players to this team",
 	"commands.capitol.team.invite.invalid_player": "Invalid Player",
 	"commands.capitol.team.invite.target_in_team": "Player is already in a team",
+	"commands.capitol.team.invite.team_full": "That team is already full",
 	"commands.capitol.team.invite.success": "Invite sent to %s.",
 
 	"commands.capitol.team.info.color": "Color: ",

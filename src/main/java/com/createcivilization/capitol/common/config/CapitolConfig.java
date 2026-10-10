@@ -16,6 +16,10 @@ public class CapitolConfig {
 	public static final ModConfigSpec.BooleanValue SUBLEVEL_CLAIM_OVERLAP;
 	public static final ModConfigSpec.DoubleValue AUTO_CLAIM_COOLDOWN;
 
+	// Teams
+	public static final ModConfigSpec.IntValue MAX_TEAM_MEMBERS;
+	public static final ModConfigSpec.IntValue INVITE_EXPIRY_SECONDS;
+
 	// Capitol block tiers
 	public static final ModConfigSpec.IntValue CAPITOL_VILLAGE_MAX_CLAIMS;
 	public static final ModConfigSpec.IntValue CAPITOL_TOWN_MAX_CLAIMS;
@@ -99,6 +103,18 @@ public class CapitolConfig {
 			.comment("How long a player must wait before being able to claim the next chunk while autoclaiming.",
 				"Given in seconds.")
 				.defineInRange("autoClaimCooldown", 1.0, 0, Integer.MAX_VALUE);
+
+		builder.pop();
+
+		builder.comment("Team settings.").push("teams");
+
+		MAX_TEAM_MEMBERS = builder
+			.comment("Maximum members a team can have. 0 = unlimited.")
+			.defineInRange("maxMembers", 50, 0, Integer.MAX_VALUE);
+
+		INVITE_EXPIRY_SECONDS = builder
+			.comment("How long a team invite stays valid, in seconds.")
+			.defineInRange("inviteExpirySeconds", 120, 1, Integer.MAX_VALUE);
 
 		builder.pop();
 

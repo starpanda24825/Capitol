@@ -1,5 +1,6 @@
 package com.createcivilization.capitol.server.commands.invite;
 
+import com.createcivilization.capitol.common.config.CapitolConfig;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
 import com.createcivilization.capitol.common.data.TeamRole;
@@ -43,6 +44,21 @@ public class InviteCommand {
 
 		Team team = resolveInvitedTeam(context, player);
 		if (team == null) return 0;
+
+		// the world can change while an invite sits around, so re-check on accept
+		if (!InviteHandler.hasValidInvite(player.getUUID(), team)) {
+			context.getSource().sendFailure(Component.translatable("commands.capitol.invites.not_found", team.getName()).withStyle(ChatFormatting.RED));
+			return 0;
+		}
+		if (DatabaseManager.database.getPlayerTeam(player) != null) {
+			context.getSource().sendFailure(Component.translatable("commands.capitol.team.create.already_in_team").withStyle(ChatFormatting.RED));
+			return 0;
+		}
+		int maxMembers = CapitolConfig.MAX_TEAM_MEMBERS.get();
+		if (maxMembers > 0 && DatabaseManager.database.getTeamMembers(team).size() >= maxMembers) {
+			context.getSource().sendFailure(Component.translatable("commands.capitol.team.invite.team_full").withStyle(ChatFormatting.RED));
+			return 0;
+		}
 
 		TeamRole role = DatabaseManager.database.getMemberRole(team);
 		DatabaseManager.database.addPlayerToTeam(player, team, role);
