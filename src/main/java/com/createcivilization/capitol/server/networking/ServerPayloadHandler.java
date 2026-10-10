@@ -385,11 +385,21 @@ public class ServerPayloadHandler {
 	public static void handleNameCapitolBlock(final C2SNameCapitolBlock request, final IPayloadContext context) {
 		CapitolDatabase database = DatabaseManager.database;
 		Player player = context.player();
+		String dimension = player.level().dimension().location().toString();
+
+		// dont trust the client's pos: it must be a capitol block this player just placed
+		if (!PendingCapitolBlock.matches(player.getUUID(), request.pos(), dimension)
+			|| !player.level().getBlockState(request.pos()).is(CapitolBlocks.CAPITOL_BLOCK.get())
+			|| !player.blockPosition().closerThan(request.pos(), 8.0)) {
+			player.displayClientMessage(Component.translatable("commands.capitol.capitol_block.invalid_naming").withStyle(ChatFormatting.RED), false);
+			return;
+		}
 
 		Team team = database.getPlayerTeam(player);
 		if (team == null || !team.getId().equals(request.teamId())) {
 			// left the team between placing and naming: drop the block
 			removeUnregisteredBlock(player, request.pos());
+			PendingCapitolBlock.clear(player.getUUID());
 			player.displayClientMessage(Component.literal("You are no longer in that team, block removed").withStyle(ChatFormatting.RED), false);
 			return;
 		}
@@ -400,9 +410,9 @@ public class ServerPayloadHandler {
 			return;
 		}
 
-		String dimension = player.level().dimension().location().toString();
 		if (database.getCapitolBlock(request.pos(), dimension) != null) {
 			// already registered (double confirm or whatever), just show the book
+			PendingCapitolBlock.clear(player.getUUID());
 			reopenBook(player, request.pos(), dimension);
 			return;
 		}
@@ -453,6 +463,7 @@ public class ServerPayloadHandler {
 				Component.literal("Capitol Block '" + name + "' placed! This block is now a Village, controlling " + transferred.size() + " claimed chunk(s).")
 					.withStyle(ChatFormatting.GREEN), false);
 		}
+		PendingCapitolBlock.clear(player.getUUID());
 	}
 
 	// the player closed the naming screen without confirming: remove the block + refund it
@@ -464,9 +475,17 @@ public class ServerPayloadHandler {
 		if (team == null || !team.getId().equals(request.teamId())) return;
 
 		String dimension = player.level().dimension().location().toString();
-		if (database.getCapitolBlock(request.pos(), dimension) != null) return;
+		// only act on the block this player actually placed and is still naming
+		if (!PendingCapitolBlock.matches(player.getUUID(), request.pos(), dimension)) return;
+
+		if (!player.level().getBlockState(request.pos()).is(CapitolBlocks.CAPITOL_BLOCK.get())
+			|| database.getCapitolBlock(request.pos(), dimension) != null) {
+			PendingCapitolBlock.clear(player.getUUID());
+			return;
+		}
 
 		removeUnregisteredBlock(player, request.pos());
+		PendingCapitolBlock.clear(player.getUUID());
 	}
 
 	public static void handleSetCapitolBlockMayor(final C2SSetCapitolBlockMayor request, final IPayloadContext context) {

@@ -7,6 +7,7 @@ import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkRemove;
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolNamingScreen;
+import com.createcivilization.capitol.server.networking.PendingCapitolBlock;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.ChatFormatting;
@@ -111,10 +112,11 @@ public class CapitolBlock extends HorizontalDirectionalBlock {
             // extra blocks start as a Village, upgradeable later
             tier = CapitolTier.VILLAGE;
         }
-
         // the block isnt registered yet - the player names it first
-        // (names are globally unique, so the naming screen handles registration)
-        PacketDistributor.sendToPlayer(player, new S2COpenCapitolNamingScreen(pos, team.getId(), isCapital, tier));
+		// (names are globally unique, so the naming screen handles registration)
+		// remember the placement so the naming packet can be validated server-side
+		PendingCapitolBlock.mark(player.getUUID(), pos, dimension);
+		PacketDistributor.sendToPlayer(player, new S2COpenCapitolNamingScreen(pos, team.getId(), isCapital, tier));
     }
 
     @Override
