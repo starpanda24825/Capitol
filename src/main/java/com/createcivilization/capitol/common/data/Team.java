@@ -166,5 +166,24 @@ public class Team {
 		}
 	}
 
+	public static final int NAME_MIN_LENGTH = 3;
+	public static final int NAME_MAX_LENGTH = 24;
+	public static final int TAG_MIN_LENGTH = 2;
+	public static final int TAG_MAX_LENGTH = 5;
+
+	public static boolean isValidName(String name) {
+		return name != null && name.length() >= NAME_MIN_LENGTH && name.length() <= NAME_MAX_LENGTH
+			&& name.chars().allMatch(Team::isAllowedCharacter);
+	}
+
+	public static boolean isValidTag(String tag) {
+		return tag != null && tag.length() >= TAG_MIN_LENGTH && tag.length() <= TAG_MAX_LENGTH
+			&& tag.chars().allMatch(Team::isAllowedCharacter);
+	}
+
+	private static boolean isAllowedCharacter(int c) {
+		return Character.isLetterOrDigit(c) || c == ' ' || c == '_' || c == '-';
+	}
+
 	public static StreamCodec<ByteBuf, Team> STREAM_CODEC = StreamCodec.ofMember(Team::encode, Team::new);
 }

@@ -187,6 +187,11 @@ public class TeamCommand {
 
 		String name = StringArgumentType.getString(context, "name");
 
+		if (!Team.isValidName(name)) {
+			context.getSource().sendFailure(Component.translatable("commands.capitol.team.create.invalid_name").withStyle(ChatFormatting.RED));
+			return 0;
+		}
+
 		if (database.teamNameExists(name)) {
 			context.getSource().sendFailure(Component.translatable("commands.capitol.team.create.name_exists").withStyle(ChatFormatting.RED));
 			return 0;
@@ -197,6 +202,11 @@ public class TeamCommand {
 			StringArgumentType.getString(context, "color")
 		).replace("#", "");
 		String tag = StringArgumentType.getString(context, "tag");
+
+		if (!Team.isValidTag(tag)) {
+			context.getSource().sendFailure(Component.translatable("commands.capitol.team.create.invalid_tag").withStyle(ChatFormatting.RED));
+			return 0;
+		}
 
 		String description;
 		try {

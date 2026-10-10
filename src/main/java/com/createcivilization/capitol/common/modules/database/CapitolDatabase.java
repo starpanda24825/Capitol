@@ -502,6 +502,8 @@ public class CapitolDatabase extends Database {
 			Capitol.LOGGER.error("Error while removing player from team in database.", e);
 			throw new RuntimeException(e);
 		}
+		// otherwise a rejoin would silently keep their old individual overrides
+		removeIndividualPermissions(playerUUID, team);
 		transferSubClaimsOnLeave(playerUUID, team);
 	}
 
