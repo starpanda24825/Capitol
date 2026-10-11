@@ -4,12 +4,18 @@ import com.createcivilization.capitol.Capitol;
 import com.createcivilization.capitol.common.compat.sable.SableCompat;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class DatabaseManager {
+
+	// bump this whenever a migration is added below
+	private static final int SCHEMA_VERSION = 7;
 
 	public static CapitolDatabase database = new CapitolDatabase();
 
@@ -26,7 +32,7 @@ public class DatabaseManager {
 			connection = DriverManager.getConnection(url);
 
 			int version = getSchemaVersion();
-			runMigrations(version);
+			runMigrations(version, databasePath);
 
 			try (Statement stmt = connection.createStatement()) {
 				stmt.execute("PRAGMA journal_mode=WAL;");
@@ -77,6 +83,10 @@ public class DatabaseManager {
 					"team_id TEXT NOT NULL," +
 					"name TEXT NOT NULL," +
 					"permissions INTEGER NOT NULL DEFAULT 0," +
+					"color INTEGER NOT NULL DEFAULT 16777215," +
+					"position INTEGER NOT NULL DEFAULT 0," +
+					"system_key TEXT," +
+					"flags INTEGER NOT NULL DEFAULT 1," +
 					"UNIQUE (team_id, name)," +
 					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
 			);
@@ -90,6 +100,18 @@ public class DatabaseManager {
 					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE," +
 					"FOREIGN KEY (role_id) REFERENCES team_roles (id) ON DELETE RESTRICT)"
 			);
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS member_roles (" +
+					"team_id TEXT NOT NULL," +
+					"player_uuid TEXT NOT NULL," +
+					"role_id INTEGER NOT NULL," +
+					"PRIMARY KEY (team_id, player_uuid, role_id)," +
+					"FOREIGN KEY (team_id, player_uuid) REFERENCES team_members (team_id, player_uuid) ON DELETE CASCADE," +
+					"FOREIGN KEY (role_id) REFERENCES team_roles (id) ON DELETE CASCADE)"
+			);
+			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_role ON member_roles(role_id)");
+			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_player ON member_roles(player_uuid)");
 
 			stmt.execute(
 				"CREATE TABLE IF NOT EXISTS chunks (" +
@@ -182,7 +204,11 @@ public class DatabaseManager {
 		}
 	}
 
-	private static void runMigrations(int current) throws SQLException {
+	private static void runMigrations(int current, Path databasePath) throws SQLException {
+		// snapshot before any structural change so an upgrade can always be rolled back
+		if (current > 0 && current < SCHEMA_VERSION) {
+			backupDatabase(databasePath, current);
+		}
 		if (current < 1) {
 			// Databases from before capitol position tracking lack these columns.
 			// Fresh databases get them from createTables() instead, so only migrate
@@ -322,6 +348,110 @@ public class DatabaseManager {
 				}
 			}
 			setSchemaVersion(6);
+		}
+		if (current < 7) {
+			// roles overhaul: multiple roles per member + editable role metadata, in one transaction
+			inTransaction(DatabaseManager::migrateToV7);
+		}
+	}
+
+	// v7: multi-role support, editable role metadata, and the sub-claim permission bit fix.
+	// Every step is guarded so it can run on a database that already has some of it.
+	private static void migrateToV7() throws SQLException {
+		if (tableExists("team_roles")) {
+			if (!columnExists("team_roles", "color"))
+				execute("ALTER TABLE team_roles ADD COLUMN color INTEGER NOT NULL DEFAULT 16777215");
+			if (!columnExists("team_roles", "position"))
+				execute("ALTER TABLE team_roles ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+			if (!columnExists("team_roles", "system_key"))
+				execute("ALTER TABLE team_roles ADD COLUMN system_key TEXT");
+			if (!columnExists("team_roles", "flags"))
+				execute("ALTER TABLE team_roles ADD COLUMN flags INTEGER NOT NULL DEFAULT 1");
+
+			// tag the well-known roles so owner/member/default stop depending on the name
+			execute("UPDATE team_roles SET system_key = 'owner' WHERE system_key IS NULL AND name = 'owner'");
+			execute("UPDATE team_roles SET system_key = 'member' WHERE system_key IS NULL AND name = 'member'");
+			execute("UPDATE team_roles SET system_key = 'default' WHERE system_key IS NULL AND name = 'default'");
+
+			// hierarchy: default < member < custom roles (stable by id) < owner
+			execute("UPDATE team_roles SET position = 0 WHERE system_key = 'default'");
+			execute("UPDATE team_roles SET position = 1 WHERE system_key = 'member'");
+			execute("UPDATE team_roles SET position = 1000000 WHERE system_key = 'owner'");
+			execute("UPDATE team_roles SET position = 2 + (" +
+				"SELECT COUNT(*) FROM team_roles other WHERE other.team_id = team_roles.team_id " +
+				"AND other.system_key IS NULL AND other.id < team_roles.id) " +
+				"WHERE system_key IS NULL");
+
+			// every team gets an editable, scoped mayor role (seeded empty)
+			execute("INSERT OR IGNORE INTO team_roles (team_id, name, permissions, color, position, system_key, flags) " +
+				"SELECT teams.id, 'mayor', 0, 16777215, 0, 'mayor', 1 FROM teams " +
+				"WHERE NOT EXISTS (SELECT 1 FROM team_roles WHERE team_roles.team_id = teams.id AND team_roles.system_key = 'mayor')");
+
+			// bit 27 used to mean MANAGE_CAPITOL_BLOCKS and CLAIM_SUB_CLAIMS at once;
+			// move sub-claims to bit 29
+			execute("UPDATE team_roles SET permissions = permissions | 536870912 WHERE (permissions & 134217728) != 0");
+		}
+
+		if (tableExists("team_members") && tableExists("team_roles") && columnExists("team_roles", "system_key")) {
+			execute("CREATE TABLE IF NOT EXISTS member_roles (" +
+				"team_id TEXT NOT NULL," +
+				"player_uuid TEXT NOT NULL," +
+				"role_id INTEGER NOT NULL," +
+				"PRIMARY KEY (team_id, player_uuid, role_id)," +
+				"FOREIGN KEY (team_id, player_uuid) REFERENCES team_members (team_id, player_uuid) ON DELETE CASCADE," +
+				"FOREIGN KEY (role_id) REFERENCES team_roles (id) ON DELETE CASCADE)");
+			execute("CREATE INDEX IF NOT EXISTS idx_member_roles_role ON member_roles(role_id)");
+			execute("CREATE INDEX IF NOT EXISTS idx_member_roles_player ON member_roles(player_uuid)");
+
+			// members on a custom role keep it as an extra role, base role becomes 'member'
+			execute("INSERT OR IGNORE INTO member_roles (team_id, player_uuid, role_id) " +
+				"SELECT team_members.team_id, team_members.player_uuid, team_members.role_id " +
+				"FROM team_members JOIN team_roles ON team_roles.id = team_members.role_id " +
+				"WHERE team_roles.system_key IS NULL");
+			execute("UPDATE team_members SET role_id = (" +
+				"SELECT team_roles.id FROM team_roles " +
+				"WHERE team_roles.team_id = team_members.team_id AND team_roles.system_key = 'member') " +
+				"WHERE role_id IN (SELECT id FROM team_roles WHERE system_key IS NULL)");
+		}
+
+		setSchemaVersion(7);
+	}
+
+	@FunctionalInterface
+	private interface SQLRunnable {
+		void run() throws SQLException;
+	}
+
+	private static void inTransaction(SQLRunnable work) throws SQLException {
+		boolean previousAutoCommit = connection.getAutoCommit();
+		connection.setAutoCommit(false);
+		try {
+			work.run();
+			connection.commit();
+		} catch (SQLException | RuntimeException e) {
+			connection.rollback();
+			throw e;
+		} finally {
+			connection.setAutoCommit(previousAutoCommit);
+		}
+	}
+
+	private static void execute(String sql) throws SQLException {
+		try (Statement stmt = connection.createStatement()) {
+			stmt.execute(sql);
+		}
+	}
+
+	private static void backupDatabase(Path databasePath, int fromVersion) {
+		Path backup = databasePath.resolveSibling(databasePath.getFileName() + ".bak-v" + fromVersion);
+		try {
+			// keep the first snapshot, don't overwrite it with a half-migrated db
+			if (Files.exists(backup)) return;
+			Files.copy(databasePath, backup, StandardCopyOption.COPY_ATTRIBUTES);
+			Capitol.LOGGER.info("Backed up capitol.db to {} before migration", backup.getFileName());
+		} catch (IOException e) {
+			Capitol.LOGGER.error("Failed to back up capitol.db, aborting migration", e);
+			throw new RuntimeException(e);
 		}
 	}
 
