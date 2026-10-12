@@ -154,7 +154,7 @@ public class CapitolDatabase extends Database {
 	 */
 	public List<TeamRole> getTeamRoles(Team team) {
 		try (PreparedStatement ps = getConnection().prepareStatement(
-			"SELECT * FROM team_roles WHERE team_id = ?")) {
+			"SELECT * FROM team_roles WHERE team_id = ? ORDER BY position DESC, id ASC")) {
 			ps.setString(1, team.getId().toString());
 			try (ResultSet rs = ps.executeQuery()) {
 				List<TeamRole> roles = new ArrayList<>();
@@ -330,9 +330,12 @@ public class CapitolDatabase extends Database {
 			throw new RuntimeException(e);
 		}
 
-		addRole(team, TeamRole.OWNER_ROLE_NAME, TeamRole.ownerPermissions());
-		addRole(team, TeamRole.MEMBER_ROLE_NAME, TeamRole.memberPermissions());
-		addRole(team, TeamRole.DEFAULT_ROLE_NAME, TeamRole.defaultPermissions());
+		// system roles are seeded with their hierarchy position and system key
+		createRole(team, TeamRole.OWNER_ROLE_NAME, 0xFFFFFF, TeamRole.ownerPermissions(), 1000000, TeamRole.OWNER_SYSTEM_KEY);
+		createRole(team, TeamRole.MEMBER_ROLE_NAME, 0xFFFFFF, TeamRole.memberPermissions(), 1, TeamRole.MEMBER_SYSTEM_KEY);
+		createRole(team, TeamRole.DEFAULT_ROLE_NAME, 0xFFFFFF, TeamRole.defaultPermissions(), 0, TeamRole.DEFAULT_SYSTEM_KEY);
+		// seeded empty and edited per team
+		createRole(team, TeamRole.MAYOR_ROLE_NAME, 0xFFFFFF, 0, 0, TeamRole.MAYOR_SYSTEM_KEY);
 	}
 
 	/**
@@ -465,8 +468,7 @@ public class CapitolDatabase extends Database {
 			ps.setString(2, player.getUUID().toString());
 			ps.setInt(3, role.id());
 			ps.execute();
-			playerPermCache.computeIfAbsent(team.getId(), k -> new HashMap<>())
-				.put(player.getUUID(), role.permissions());
+			invalidatePlayer(team, player.getUUID());
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error while adding player to team in database.", e);
 			throw new RuntimeException(e);
@@ -591,8 +593,7 @@ public class CapitolDatabase extends Database {
 			ps.setString(2, team.getId().toString());
 			ps.setString(3, playerUUID.toString());
 			ps.execute();
-			playerPermCache.computeIfAbsent(team.getId(), k -> new HashMap<>())
-				.put(playerUUID, newRole.permissions());
+			invalidatePlayer(team, playerUUID);
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error while updating player role in database.", e);
 			throw new RuntimeException(e);
@@ -692,36 +693,289 @@ public class CapitolDatabase extends Database {
 	}
 
 	public long getPlayerPermission(UUID playerUUID, Team team) {
+		return getEffectivePermissions(playerUUID, team);
+	}
+
+	//Effective permissions = owner (all) or OR of the base role and every extra role, OR with any individual overrides. Non-members fall back to the team's guest role.
+
+	public long getEffectivePermissions(UUID playerUUID, Team team) {
 		Map<UUID, Long> teamCache = playerPermCache.get(team.getId());
 		if (teamCache != null) {
 			Long cached = teamCache.get(playerUUID);
 			if (cached != null) return cached;
 		}
+		long perms = computeEffectivePermissions(playerUUID, team);
+		playerPermCache.computeIfAbsent(team.getId(), k -> new HashMap<>())
+			.put(playerUUID, perms);
+		return perms;
+	}
+
+	// drops one player's cached effective permissions; role edits clear the whole team instead
+	private void invalidatePlayer(Team team, UUID playerUUID) {
+		Map<UUID, Long> teamCache = playerPermCache.get(team.getId());
+		if (teamCache != null) teamCache.remove(playerUUID);
+	}
+
+	private long computeEffectivePermissions(UUID playerUUID, Team team) {
+		MemberRoles roles = getMemberRoles(playerUUID, team);
+		long perms;
+		if (roles.base() == null) {
+			// not a member: the guest/default role decides what outsiders may do
+			TeamRole guest = getDefaultRole(team);
+			perms = guest != null ? guest.permissions() : 0;
+		} else if (roles.isOwner()) {
+			// owner always gets the full current permission set, so new perms apply to old teams too
+			perms = TeamRole.ownerPermissions();
+		} else {
+			perms = roles.base().permissions();
+			for (TeamRole extra : roles.extra()) perms |= extra.permissions();
+		}
+		Long individual = getIndividualPermissions(playerUUID, team);
+		if (individual != null) perms |= individual;
+		return perms;
+	}
+
+
+	// A player's base role (owner/member) plus their extra custom roles.
+
+	public MemberRoles getMemberRoles(UUID playerUUID, Team team) {
+		TeamRole base = null;
 		try (PreparedStatement ps = getConnection().prepareStatement(
-				"SELECT team_roles.name, team_roles.permissions FROM team_members " +
+				"SELECT team_roles.* FROM team_members " +
 					"JOIN team_roles ON team_roles.id = team_members.role_id " +
 					"WHERE team_members.team_id = ? AND team_members.player_uuid = ?")) {
 			ps.setString(1, team.getId().toString());
 			ps.setString(2, playerUUID.toString());
 			try (ResultSet rs = ps.executeQuery()) {
-				long perms;
-				if (rs.next()) {
-					if (TeamRole.OWNER_ROLE_NAME.equals(rs.getString("name"))) {
-						// owner always gets the full current permission set, so new perms apply to old teams too
-						perms = TeamRole.ownerPermissions();
-					} else {
-						perms = rs.getLong("permissions");
-					}
-				} else {
-					TeamRole role = getRoleByName(team, TeamRole.DEFAULT_ROLE_NAME);
-					perms = role != null ? role.permissions() : 0;
-				}
-				playerPermCache.computeIfAbsent(team.getId(), k -> new HashMap<>())
-					.put(playerUUID, perms);
-				return perms;
+				if (rs.next()) base = TeamRole.fromResultSet(rs);
 			}
 		} catch (SQLException e) {
-			Capitol.LOGGER.error("Error while getting player permissions from database.", e);
+			Capitol.LOGGER.error("Error while getting a member's base role from database.", e);
+			throw new RuntimeException(e);
+		}
+
+		List<TeamRole> extra = new ArrayList<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT team_roles.* FROM member_roles " +
+					"JOIN team_roles ON team_roles.id = member_roles.role_id " +
+					"WHERE member_roles.team_id = ? AND member_roles.player_uuid = ? " +
+					"ORDER BY team_roles.position DESC")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, playerUUID.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) extra.add(TeamRole.fromResultSet(rs));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting a member's extra roles from database.", e);
+			throw new RuntimeException(e);
+		}
+
+		return new MemberRoles(playerUUID, base, extra);
+	}
+
+	/**
+	 * Highest hierarchy position the player holds in the team (owner is highest).
+	 * Returns {@link Integer#MIN_VALUE} for non-members so nothing is below them.
+	 */
+	public int getHighestPosition(UUID playerUUID, Team team) {
+		MemberRoles roles = getMemberRoles(playerUUID, team);
+		int highest = Integer.MIN_VALUE;
+		if (roles.base() != null) highest = Math.max(highest, roles.base().position());
+		for (TeamRole extra : roles.extra()) highest = Math.max(highest, extra.position());
+		return highest;
+	}
+
+	public void addMemberRole(UUID playerUUID, Team team, int roleId) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"INSERT OR IGNORE INTO member_roles (team_id, player_uuid, role_id) VALUES (?, ?, ?)")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, playerUUID.toString());
+			ps.setInt(3, roleId);
+			ps.execute();
+			invalidatePlayer(team, playerUUID);
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while adding a role to a member in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void removeMemberRole(UUID playerUUID, Team team, int roleId) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM member_roles WHERE team_id = ? AND player_uuid = ? AND role_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, playerUUID.toString());
+			ps.setInt(3, roleId);
+			ps.execute();
+			invalidatePlayer(team, playerUUID);
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while removing a role from a member in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+
+	// Replaces a player's extra roles in one transaction.
+
+	public void setMemberRoles(UUID playerUUID, Team team, Collection<Integer> roleIds) {
+		inTransaction(() -> {
+			try (PreparedStatement delete = getConnection().prepareStatement(
+					"DELETE FROM member_roles WHERE team_id = ? AND player_uuid = ?")) {
+				delete.setString(1, team.getId().toString());
+				delete.setString(2, playerUUID.toString());
+				delete.execute();
+			}
+			try (PreparedStatement insert = getConnection().prepareStatement(
+					"INSERT OR IGNORE INTO member_roles (team_id, player_uuid, role_id) VALUES (?, ?, ?)")) {
+				for (int roleId : roleIds) {
+					insert.setString(1, team.getId().toString());
+					insert.setString(2, playerUUID.toString());
+					insert.setInt(3, roleId);
+					insert.addBatch();
+				}
+				insert.executeBatch();
+			}
+		});
+		invalidatePlayer(team, playerUUID);
+	}
+
+	// base-role holders live in team_members, extra-role holders in member_roles
+	public List<UUID> getRoleMembers(Team team, int roleId) {
+		List<UUID> members = new ArrayList<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT player_uuid FROM team_members WHERE team_id = ? AND role_id = ? " +
+					"UNION SELECT player_uuid FROM member_roles WHERE team_id = ? AND role_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			ps.setInt(2, roleId);
+			ps.setString(3, team.getId().toString());
+			ps.setInt(4, roleId);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) members.add(UUID.fromString(rs.getString(1)));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting role members from database.", e);
+			throw new RuntimeException(e);
+		}
+		return members;
+	}
+
+	// Inserts a role and returns it. Use systemKey = null for a custom role.
+	public TeamRole createRole(Team team, String name, int color, long permissions, int position, @Nullable String systemKey) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"INSERT INTO team_roles (team_id, name, permissions, color, position, system_key, flags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				Statement.RETURN_GENERATED_KEYS)) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, name);
+			ps.setLong(3, permissions);
+			ps.setInt(4, color);
+			ps.setInt(5, position);
+			ps.setString(6, systemKey);
+			ps.setInt(7, TeamRole.FLAG_MAILABLE);
+			ps.executeUpdate();
+			playerPermCache.remove(team.getId());
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				return keys.next() ? getRole(keys.getInt(1)) : null;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while creating role in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	
+	// Updates every editable field of a role at once.
+
+	public void updateRole(TeamRole role, String name, int color, long permissions, int position, int flags) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE team_roles SET name = ?, color = ?, permissions = ?, position = ?, flags = ? WHERE id = ?")) {
+			ps.setString(1, name);
+			ps.setInt(2, color);
+			ps.setLong(3, permissions);
+			ps.setInt(4, position);
+			ps.setInt(5, flags);
+			ps.setInt(6, role.id());
+			ps.execute();
+			playerPermCache.remove(role.teamId());
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while updating role in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+
+	// Deletes a custom role. System roles can't be deleted; assignments cascade.
+
+	public void deleteRole(Team team, int roleId) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM team_roles WHERE id = ? AND team_id = ? AND system_key IS NULL")) {
+			ps.setInt(1, roleId);
+			ps.setString(2, team.getId().toString());
+			ps.execute();
+			playerPermCache.remove(team.getId());
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while deleting role from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+
+	// Moves a custom role one step in the hierarchy. +ve delta moves up, -ve away. 
+	// Only custom roles are reordered; positions are then reassigned so they stay distinct.
+
+	public void moveRole(Team team, int roleId, int delta) {
+		List<TeamRole> custom = new ArrayList<>();
+		for (TeamRole role : getTeamRoles(team)) {
+			if (!role.isSystem()) custom.add(role);
+		}
+		custom.sort(Comparator.comparingInt(TeamRole::position));
+		int index = -1;
+		for (int i = 0; i < custom.size(); i++) {
+			if (custom.get(i).id() == roleId) { index = i; break; }
+		}
+		int target = index + delta;
+		if (index < 0 || target < 0 || target >= custom.size()) return;
+
+		Collections.swap(custom, index, target);
+		inTransaction(() -> {
+			for (int i = 0; i < custom.size(); i++) {
+				setRolePosition(custom.get(i).id(), 2 + i);
+			}
+		});
+		playerPermCache.remove(team.getId());
+	}
+
+	private void setRolePosition(int roleId, int position) throws SQLException {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE team_roles SET position = ? WHERE id = ?")) {
+			ps.setInt(1, position);
+			ps.setInt(2, roleId);
+			ps.execute();
+		}
+	}
+
+	@FunctionalInterface
+	public interface SQLRunnable {
+		void run() throws SQLException;
+	}
+
+
+	// Runs several statements as one unit, rolling back on any failure.
+
+	public void inTransaction(SQLRunnable work) {
+		try {
+			Connection connection = getConnection();
+			boolean previousAutoCommit = connection.getAutoCommit();
+			connection.setAutoCommit(false);
+			try {
+				work.run();
+				connection.commit();
+			} catch (SQLException | RuntimeException e) {
+				connection.rollback();
+				throw e;
+			} finally {
+				connection.setAutoCommit(previousAutoCommit);
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while running a database transaction.", e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -766,6 +1020,7 @@ public class CapitolDatabase extends Database {
 			ps.execute();
 			individualPermCache.computeIfAbsent(team.getId(), k -> new HashMap<>())
 				.put(playerUUID, Optional.of(permissions));
+			invalidatePlayer(team, playerUUID);
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error while setting individual permissions in database.", e);
 			throw new RuntimeException(e);
@@ -784,6 +1039,7 @@ public class CapitolDatabase extends Database {
 			ps.execute();
 			Map<UUID, Optional<Long>> teamCache = individualPermCache.get(team.getId());
 			if (teamCache != null) teamCache.put(playerUUID, Optional.empty());
+			invalidatePlayer(team, playerUUID);
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error while removing individual permissions in database.", e);
 			throw new RuntimeException(e);
