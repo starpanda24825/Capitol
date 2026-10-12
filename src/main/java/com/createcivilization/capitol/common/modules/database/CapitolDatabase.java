@@ -133,7 +133,8 @@ public class CapitolDatabase extends Database {
 					// owner role always keeps the full current permission set; fix a stale snapshot
 					if (role.isOwner() && role.permissions() != TeamRole.ownerPermissions()) {
 						updateRolePermissions(team, roleName, TeamRole.ownerPermissions());
-						return new TeamRole(role.id(), role.teamId(), role.name(), TeamRole.ownerPermissions());
+						return new TeamRole(role.id(), role.teamId(), role.name(), TeamRole.ownerPermissions(),
+							role.color(), role.position(), role.systemKey(), role.flags());
 					}
 					return role;
 				}
