@@ -77,6 +77,23 @@
 
 	"commands.capitol.team.role.no_manage_permission": "You do not have permission to edit this role",
 	"commands.capitol.team.role.not_found": "The role %s does not exist in %s",
+	"commands.capitol.team.role.hierarchy.too_high": "That role or member is at or above your rank",
+	"commands.capitol.team.role.grant_missing": "You cannot grant permissions you do not hold yourself",
+	"commands.capitol.team.role.create.limit": "Your team already has the maximum number of roles (%s)",
+	"commands.capitol.team.role.delete.system": "System roles cannot be deleted",
+	"commands.capitol.team.role.assign.system": "System roles are applied automatically and cannot be assigned",
+	"commands.capitol.team.role.assign.already": "That member already has this role",
+	"commands.capitol.team.role.assign.limit": "That member already holds the maximum number of extra roles (%s)",
+	"commands.capitol.team.role.owner_untouchable": "You cannot change the owner's roles or permissions",
+	"commands.capitol.team.role.name.invalid": "Role names must be 1-24 characters (letters, digits, spaces, _ or -)",
+	"commands.capitol.team.role.name.reserved": "Role names cannot be owner, member, default or mayor",
+	"commands.capitol.team.role.name.exists": "A role with that name already exists",
+
+	"commands.capitol.team.member.not_found": "That player is not a member of your team",
+	"commands.capitol.team.kick.self": "You cannot kick yourself",
+	"commands.capitol.team.kick.owner": "You cannot kick the team owner",
+	"commands.capitol.team.kick.not_member": "That player is not a member of your team",
+	"commands.capitol.team.kick.hierarchy": "That member is at or above your rank",
 
 	"commands.capitol.team.role.create.no_permission": "You do not have permission to create a role",
 	"commands.capitol.team.role.create.success": "Role %s added to %s",

@@ -20,6 +20,10 @@ public class CapitolConfig {
 	public static final ModConfigSpec.IntValue MAX_TEAM_MEMBERS;
 	public static final ModConfigSpec.IntValue INVITE_EXPIRY_SECONDS;
 
+	// Roles
+	public static final ModConfigSpec.IntValue MAX_ROLES_PER_TEAM;
+	public static final ModConfigSpec.IntValue MAX_EXTRA_ROLES_PER_MEMBER;
+
 	// Capitol block tiers
 	public static final ModConfigSpec.IntValue CAPITOL_VILLAGE_MAX_CLAIMS;
 	public static final ModConfigSpec.IntValue CAPITOL_TOWN_MAX_CLAIMS;
@@ -115,6 +119,18 @@ public class CapitolConfig {
 		INVITE_EXPIRY_SECONDS = builder
 			.comment("How long a team invite stays valid, in seconds.")
 			.defineInRange("inviteExpirySeconds", 120, 1, Integer.MAX_VALUE);
+
+		builder.pop();
+
+		builder.comment("Role management caps.").push("roles");
+
+		MAX_ROLES_PER_TEAM = builder
+			.comment("Maximum roles a team can have, including system roles. 0 = unlimited.")
+			.defineInRange("maxRolesPerTeam", 20, 0, Integer.MAX_VALUE);
+
+		MAX_EXTRA_ROLES_PER_MEMBER = builder
+			.comment("Maximum extra roles a member can hold on top of their base role. 0 = unlimited.")
+			.defineInRange("maxExtraRolesPerMember", 5, 0, Integer.MAX_VALUE);
 
 		builder.pop();
 
