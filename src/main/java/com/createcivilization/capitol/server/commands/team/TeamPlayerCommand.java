@@ -4,6 +4,7 @@ import com.createcivilization.capitol.common.data.Permission;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
+import com.createcivilization.capitol.common.managers.RoleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -61,11 +62,6 @@ class TeamPlayerCommand {
 			return 0;
 		}
 
-		if (!Permission.MANAGE_ROLES.hasPermission(database.getPlayerPermission(player, team))) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.player.no_permission").withStyle(ChatFormatting.RED));
-			return 0;
-		}
-
 		String playerName = StringArgumentType.getString(context, "player");
 		GameProfileCache profileCache = context.getSource().getServer().getProfileCache();
 		Optional<GameProfile> profile = profileCache.get(playerName);
@@ -75,11 +71,6 @@ class TeamPlayerCommand {
 		}
 
 		GameProfile gameProfile = profile.get();
-
-		if (!database.isPlayerInTeam(gameProfile.getId(), team)) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.player_not_in_team", gameProfile.getName(), team.getName()).withStyle(ChatFormatting.RED));
-			return 0;
-		}
 
 		String permissionName = StringArgumentType.getString(context, "permission_value").toUpperCase();
 		Permission permission;
@@ -98,7 +89,11 @@ class TeamPlayerCommand {
 		long newIndividual = permission.toggle(currentIndividual);
 		boolean newState = permission.hasPermission(rolePerms | newIndividual);
 
-		database.setIndividualPermissions(gameProfile.getId(), team, newIndividual);
+		RoleManager.Check result = RoleManager.setIndividualPermissions(player, team, gameProfile.getId(), newIndividual);
+		if (!result.ok()) {
+			context.getSource().sendFailure(Component.translatable(result.langKey(), result.args()).withStyle(ChatFormatting.RED));
+			return 0;
+		}
 
 		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.permission_toggle",
 			Component.literal(permissionName.toLowerCase()).withStyle(ChatFormatting.AQUA),
@@ -118,11 +113,6 @@ class TeamPlayerCommand {
 			return 0;
 		}
 
-		if (!Permission.MANAGE_ROLES.hasPermission(database.getPlayerPermission(player, team))) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.player.no_permission").withStyle(ChatFormatting.RED));
-			return 0;
-		}
-
 		String playerName = StringArgumentType.getString(context, "player");
 		GameProfileCache profileCache = context.getSource().getServer().getProfileCache();
 		Optional<GameProfile> profile = profileCache.get(playerName);
@@ -133,8 +123,9 @@ class TeamPlayerCommand {
 
 		GameProfile gameProfile = profile.get();
 
-		if (!database.isPlayerInTeam(gameProfile.getId(), team)) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.player_not_in_team", gameProfile.getName(), team.getName()).withStyle(ChatFormatting.RED));
+		RoleManager.Check result = RoleManager.canSetIndividualPermissions(player, team, gameProfile.getId(), 0L);
+		if (!result.ok()) {
+			context.getSource().sendFailure(Component.translatable(result.langKey(), result.args()).withStyle(ChatFormatting.RED));
 			return 0;
 		}
 

@@ -7,6 +7,7 @@ import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import net.minecraft.server.level.ServerPlayer;
+import javax.annotation.Nullable;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;
@@ -164,6 +165,109 @@ public final class RoleManager {
 			return Check.deny("commands.capitol.team.kick.no_permission");
 		if (!RoleRules.isStrictlyBelow(highestPosition(actor, team), db().getHighestPosition(target, team)))
 			return Check.deny("commands.capitol.team.kick.hierarchy");
+		return Check.allow();
+	}
+
+	// actions: validation + write, shared by commands and packet handlers
+
+	public static Check createRole(Player actor, Team team, String name, int color, long permissions) {
+		Check allowed = canCreateRole(actor, team);
+		if (!allowed.ok()) return allowed;
+		String trimmed = name == null ? "" : name.trim();
+		if (!RoleRules.isValidRoleName(trimmed))
+			return Check.deny(RoleRules.isReservedName(trimmed)
+				? "commands.capitol.team.role.name.reserved" : "commands.capitol.team.role.name.invalid");
+		if (db().roleNameExists(team, trimmed))
+			return Check.deny("commands.capitol.team.role.name.exists");
+		if (!isOp(actor) && !RoleRules.canGrant(permissionsOf(actor, team), permissions))
+			return Check.deny("commands.capitol.team.role.grant_missing");
+
+		// stack new custom roles above the existing ones
+		int position = 2;
+		for (TeamRole role : db().getTeamRoles(team)) {
+			if (!role.isSystem() && role.position() >= position) position = role.position() + 1;
+		}
+		db().createRole(team, trimmed, color, permissions, position, null);
+		return Check.allow();
+	}
+
+
+	// Edits a role's fields; pass null to leave a field unchanged.
+
+	public static Check updateRole(Player actor, Team team, TeamRole role, @Nullable String name,
+								   @Nullable Integer color, @Nullable Long permissions, @Nullable Integer flags) {
+		Check allowed = canEditRole(actor, team, role);
+		if (!allowed.ok()) return allowed;
+
+		String newName = role.name();
+		if (name != null) {
+			String trimmed = name.trim();
+			if (!RoleRules.isValidRoleName(trimmed))
+				return Check.deny(RoleRules.isReservedName(trimmed)
+					? "commands.capitol.team.role.name.reserved" : "commands.capitol.team.role.name.invalid");
+			if (!trimmed.equalsIgnoreCase(role.name()) && db().roleNameExists(team, trimmed))
+				return Check.deny("commands.capitol.team.role.name.exists");
+			newName = trimmed;
+		}
+
+		long newPermissions = role.permissions();
+		if (permissions != null) {
+			Check permsAllowed = canSetPermissions(actor, team, role, permissions);
+			if (!permsAllowed.ok()) return permsAllowed;
+			newPermissions = sanitizeFor(role, permissions);
+		}
+
+		db().updateRole(role, newName, color != null ? color : role.color(), newPermissions,
+			role.position(), flags != null ? flags : role.flags());
+		return Check.allow();
+	}
+
+	public static Check setRolePermissions(Player actor, Team team, TeamRole role, long permissions) {
+		Check allowed = canSetPermissions(actor, team, role, permissions);
+		if (!allowed.ok()) return allowed;
+		db().updateRole(role, role.name(), role.color(), sanitizeFor(role, permissions), role.position(), role.flags());
+		return Check.allow();
+	}
+
+	public static Check deleteRole(Player actor, Team team, TeamRole role) {
+		Check allowed = canDeleteRole(actor, team, role);
+		if (!allowed.ok()) return allowed;
+		db().deleteRole(team, role.id());
+		return Check.allow();
+	}
+
+	public static Check moveRole(Player actor, Team team, TeamRole role, int delta) {
+		Check allowed = canMoveRole(actor, team, role);
+		if (!allowed.ok()) return allowed;
+		db().moveRole(team, role.id(), delta);
+		return Check.allow();
+	}
+
+	public static Check assignRole(Player actor, Team team, TeamRole role, UUID target) {
+		Check allowed = canAssignRole(actor, team, role, target);
+		if (!allowed.ok()) return allowed;
+		db().addMemberRole(target, team, role.id());
+		return Check.allow();
+	}
+
+	public static Check unassignRole(Player actor, Team team, TeamRole role, UUID target) {
+		Check allowed = canUnassignRole(actor, team, role, target);
+		if (!allowed.ok()) return allowed;
+		db().removeMemberRole(target, team, role.id());
+		return Check.allow();
+	}
+
+	public static Check setIndividualPermissions(Player actor, Team team, UUID target, long permissions) {
+		Check allowed = canSetIndividualPermissions(actor, team, target, permissions);
+		if (!allowed.ok()) return allowed;
+		db().setIndividualPermissions(target, team, permissions);
+		return Check.allow();
+	}
+
+	public static Check kick(Player actor, Team team, UUID target) {
+		Check allowed = canKick(actor, team, target);
+		if (!allowed.ok()) return allowed;
+		db().removePlayerFromTeam(target, team);
 		return Check.allow();
 	}
 }

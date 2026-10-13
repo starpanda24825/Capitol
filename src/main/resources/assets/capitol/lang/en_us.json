@@ -64,6 +64,7 @@
 
 	"commands.capitol.team.kick.no_permission": "You do not have permission to kick players from this team",
 	"commands.capitol.team.kick.success": "Kicked %s from the team.",
+	"commands.capitol.team.kick.notify": "You have been removed from %s",
 
 	"commands.capitol.team.leave.is_owner": "You are the owner of this team. Disband it instead.",
 	"commands.capitol.team.leave.success": "You have left %s.",
@@ -102,6 +103,11 @@
 	"commands.capitol.team.role.remove.default": "You cannot remove default role.",
 	"commands.capitol.team.role.remove.member": "You cannot remove the 'member' role.",
 	"commands.capitol.team.role.remove.success": "Deleted role %s",
+	"commands.capitol.team.role.remove.affected": "%s member(s) also lost this role",
+	"commands.capitol.team.role.color.success": "Updated the colour of role %s",
+	"commands.capitol.team.role.move.success": "Moved role %s",
+	"commands.capitol.team.role.unassign.success": "%s no longer has the role %s",
+	"commands.capitol.team.role.members.empty": "No members have that role",
 
 	"commands.capitol.team.role.assign.no_permission": "You do not have permission to assign roles",
 	"commands.capitol.team.role.assign.owner": "You cannot assign the owner role.",

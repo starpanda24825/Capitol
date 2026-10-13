@@ -115,6 +115,31 @@ public class CapitolDatabase extends Database {
 		}
 	}
 
+	// Retrieves a role scoped to a team, or null if it belongs to another team.
+
+	@Nullable
+	public TeamRole getRole(Team team, int roleId) {
+		TeamRole role = getRole(roleId);
+		return role != null && role.teamId().equals(team.getId()) ? role : null;
+	}
+
+
+	// Case-insensitive name check within a team, since role names must be unique per team.
+
+	public boolean roleNameExists(Team team, String name) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT 1 FROM team_roles WHERE team_id = ? AND name = ? COLLATE NOCASE")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, name);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next();
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while checking role name existence in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
 	/**
 	 * Retrieves a role by team and role name.
 	 *

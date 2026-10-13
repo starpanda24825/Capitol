@@ -2,6 +2,7 @@ package com.createcivilization.capitol.server.commands.team;
 
 import com.createcivilization.capitol.common.data.*;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
+import com.createcivilization.capitol.common.managers.RoleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkRemove;
 import com.createcivilization.capitol.server.invites.InviteHandler;
@@ -244,11 +245,6 @@ public class TeamCommand {
 			return 0;
 		}
 
-		if (!Permission.KICK_MEMBERS.hasPermission(database.getPlayerPermission(player, team))) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.kick.no_permission").withStyle(ChatFormatting.RED));
-			return 0;
-		}
-
 		GameProfileCache profileCache = context.getSource().getServer().getProfileCache();
 		Optional<GameProfile> profile = profileCache.get(playerName);
 		if (profile.isEmpty()) {
@@ -257,7 +253,18 @@ public class TeamCommand {
 		}
 
 		GameProfile gameProfile = profile.get();
-		database.removePlayerFromTeam(gameProfile.getId(), team);
+
+		// hierarchy and permission checks are all in RoleManager
+		RoleManager.Check result = RoleManager.kick(player, team, gameProfile.getId());
+		if (!result.ok()) return TeamRoleCommand.failCommand(context, result.langKey(), result.args());
+
+		InviteHandler.clearInvites(gameProfile.getId());
+
+		ServerPlayer online = context.getSource().getServer().getPlayerList().getPlayer(gameProfile.getId());
+		if (online != null) {
+			online.sendSystemMessage(Component.translatable("commands.capitol.team.kick.notify",
+				Component.literal(team.getName()).withStyle(ChatFormatting.GOLD)).withStyle(ChatFormatting.RED));
+		}
 
 		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.kick.success",
 			Component.literal(gameProfile.getName()).withStyle(ChatFormatting.WHITE))
