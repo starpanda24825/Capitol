@@ -4,6 +4,7 @@ import com.createcivilization.capitol.client.events.ChunkEvents;
 import com.createcivilization.capitol.client.journeymap.ClientJMClaims;
 import com.createcivilization.capitol.common.CapitolClientHooks;
 import com.createcivilization.capitol.common.data.Team;
+import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkData;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkRemove;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimData;
@@ -11,6 +12,8 @@ import com.createcivilization.capitol.common.networking.packets.S2CSubClaimRemov
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolNamingScreen;
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolScreen;
 import com.createcivilization.capitol.common.networking.packets.S2CSyncWars;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -56,5 +59,12 @@ public class ClientPayloadHandler {
 
 	public static void syncWarsHandler(final S2CSyncWars payload, final IPayloadContext context) {
 		ClientWarCache.setWars(payload.wars());
+	}
+
+	public static void actionResultHandler(final S2CActionResult payload, final IPayloadContext context) {
+		// successes are silent; failures are shown to the player
+		if (payload.success()) return;
+		context.player().displayClientMessage(
+			Component.translatable(payload.langKey(), payload.args().toArray()).withStyle(ChatFormatting.RED), false);
 	}
 }

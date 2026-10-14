@@ -10,10 +10,19 @@ import com.createcivilization.capitol.common.data.SubClaim;
 import com.createcivilization.capitol.common.data.SubClaimProtection;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
+import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.item.SubClaimWand;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
+import com.createcivilization.capitol.common.managers.RoleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
+import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
 import com.createcivilization.capitol.common.networking.packets.C2SChunkRequest;
+import com.createcivilization.capitol.common.networking.packets.C2SCreateRole;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteRole;
+import com.createcivilization.capitol.common.networking.packets.C2SEditRole;
+import com.createcivilization.capitol.common.networking.packets.C2SKickMember;
+import com.createcivilization.capitol.common.networking.packets.C2SMoveRole;
+import com.createcivilization.capitol.common.networking.packets.C2SSetRolePermissions;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubClaim;
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
@@ -24,6 +33,7 @@ import com.createcivilization.capitol.common.networking.packets.C2SSetCapitolBlo
 import com.createcivilization.capitol.common.networking.packets.C2STeamChat;
 import com.createcivilization.capitol.common.networking.packets.C2SUnclaimChunk;
 import com.createcivilization.capitol.common.networking.packets.C2SUpgradeCapitolBlock;
+import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimData;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimRemove;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkData;
@@ -694,6 +704,120 @@ public class ServerPayloadHandler {
 	public static void broadcastWars() {
 		PacketDistributor.sendToAllPlayers(new S2CSyncWars(DatabaseManager.database.getAllWars()));
 	}
+	
+
+	// role/member actions from the GUI
+
+	public static void handleCreateRole(final C2SCreateRole request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = RoleManager.createRole(player, team, request.name(), request.color(), request.permissions());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleEditRole(final C2SEditRole request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		TeamRole role = DatabaseManager.database.getRole(team, request.roleId());
+		RoleManager.Check result = RoleManager.updateRole(player, team, role,
+			request.hasName() ? request.name() : null,
+			request.hasColor() ? request.color() : null,
+			null,
+			request.hasFlags() ? request.flags() : null);
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleSetRolePermissions(final C2SSetRolePermissions request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		TeamRole role = DatabaseManager.database.getRole(team, request.roleId());
+		RoleManager.Check result = RoleManager.setRolePermissions(player, team, role, request.permissions());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleDeleteRole(final C2SDeleteRole request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		TeamRole role = DatabaseManager.database.getRole(team, request.roleId());
+		RoleManager.Check result = RoleManager.deleteRole(player, team, role);
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleMoveRole(final C2SMoveRole request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		TeamRole role = DatabaseManager.database.getRole(team, request.roleId());
+		RoleManager.Check result = RoleManager.moveRole(player, team, role, request.delta());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleAssignRole(final C2SAssignRole request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		TeamRole role = DatabaseManager.database.getRole(team, request.roleId());
+		RoleManager.Check result = request.add()
+			? RoleManager.assignRole(player, team, role, request.target())
+			: RoleManager.unassignRole(player, team, role, request.target());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleKickMember(final C2SKickMember request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = RoleManager.kick(player, team, request.target());
+		if (result.ok()) {
+			InviteHandler.clearInvites(request.target());
+			ServerPlayer online = player.getServer() == null ? null : player.getServer().getPlayerList().getPlayer(request.target());
+			if (online != null) {
+				online.sendSystemMessage(Component.translatable("commands.capitol.team.kick.notify",
+					Component.literal(team.getName()).withStyle(ChatFormatting.GOLD)).withStyle(ChatFormatting.RED));
+			}
+		}
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	// the GUI shows failures; successes are silent
+	private static void sendAction(Player player, RoleManager.Check result) {
+		List<String> args = new ArrayList<>();
+		for (Object arg : result.args()) args.add(String.valueOf(arg));
+		PacketDistributor.sendToPlayer((ServerPlayer) player, new S2CActionResult(result.ok(), result.langKey(), args));
+	}
+
 
 	// builds the book-open packet with everything the book page needs
 	public static S2COpenCapitolScreen openCapitolScreenFor(Team team, CapitolBlockData data, Player player) {

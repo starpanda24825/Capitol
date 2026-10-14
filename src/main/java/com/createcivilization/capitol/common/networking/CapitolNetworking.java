@@ -21,6 +21,14 @@ import com.createcivilization.capitol.common.networking.packets.C2SUpgradeCapito
 import com.createcivilization.capitol.common.networking.packets.C2SDeclareWar;
 import com.createcivilization.capitol.common.networking.packets.C2SEndWar;
 import com.createcivilization.capitol.common.networking.packets.S2CSyncWars;
+import com.createcivilization.capitol.common.networking.packets.C2SCreateRole;
+import com.createcivilization.capitol.common.networking.packets.C2SEditRole;
+import com.createcivilization.capitol.common.networking.packets.C2SSetRolePermissions;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteRole;
+import com.createcivilization.capitol.common.networking.packets.C2SMoveRole;
+import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
+import com.createcivilization.capitol.common.networking.packets.C2SKickMember;
+import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -37,7 +45,7 @@ public class CapitolNetworking {
 
 	@SubscribeEvent
 	public static void register(final RegisterPayloadHandlersEvent event) {
-		final PayloadRegistrar registrar = event.registrar("3");
+		final PayloadRegistrar registrar = event.registrar("4");
 
 		registrar.playToClient(
 			S2CChunkData.TYPE,
@@ -197,6 +205,54 @@ public class CapitolNetworking {
 			new MainThreadPayloadHandler<>(
 				ServerPayloadHandler::handleEndWar
 			)
+		);
+
+		registrar.playToServer(
+			C2SCreateRole.TYPE,
+			C2SCreateRole.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleCreateRole)
+		);
+
+		registrar.playToServer(
+			C2SEditRole.TYPE,
+			C2SEditRole.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleEditRole)
+		);
+
+		registrar.playToServer(
+			C2SSetRolePermissions.TYPE,
+			C2SSetRolePermissions.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleSetRolePermissions)
+		);
+
+		registrar.playToServer(
+			C2SDeleteRole.TYPE,
+			C2SDeleteRole.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleDeleteRole)
+		);
+
+		registrar.playToServer(
+			C2SMoveRole.TYPE,
+			C2SMoveRole.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleMoveRole)
+		);
+
+		registrar.playToServer(
+			C2SAssignRole.TYPE,
+			C2SAssignRole.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleAssignRole)
+		);
+
+		registrar.playToServer(
+			C2SKickMember.TYPE,
+			C2SKickMember.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleKickMember)
+		);
+
+		registrar.playToClient(
+			S2CActionResult.TYPE,
+			S2CActionResult.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::actionResultHandler)
 		);
 	}
 
