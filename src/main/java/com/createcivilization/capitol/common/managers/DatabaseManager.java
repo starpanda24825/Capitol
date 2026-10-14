@@ -15,7 +15,7 @@ import java.util.List;
 public class DatabaseManager {
 
 	// bump this whenever a migration is added below
-	private static final int SCHEMA_VERSION = 7;
+	private static final int SCHEMA_VERSION = 8;
 
 	public static CapitolDatabase database = new CapitolDatabase();
 
@@ -74,7 +74,8 @@ public class DatabaseManager {
 					"capitol_x INTEGER," +
 					"capitol_y INTEGER," +
 					"capitol_z INTEGER," +
-					"capitol_dimension TEXT)"
+					"capitol_dimension TEXT," +
+					"disband_lock_until LONG NOT NULL DEFAULT 0)"
 			);
 
 			stmt.execute(
@@ -112,6 +113,23 @@ public class DatabaseManager {
 			);
 			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_role ON member_roles(role_id)");
 			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_player ON member_roles(player_uuid)");
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS disband_requests (" +
+					"team_id TEXT PRIMARY KEY," +
+					"requested_by TEXT NOT NULL," +
+					"requested_at LONG NOT NULL," +
+					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
+			);
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS disband_approvals (" +
+					"team_id TEXT NOT NULL," +
+					"player_uuid TEXT NOT NULL," +
+					"approved INTEGER NOT NULL DEFAULT 0," +
+					"PRIMARY KEY (team_id, player_uuid)," +
+					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
+			);
 
 			stmt.execute(
 				"CREATE TABLE IF NOT EXISTS chunks (" +
@@ -353,6 +371,31 @@ public class DatabaseManager {
 			// roles overhaul: multiple roles per member + editable role metadata, in one transaction
 			inTransaction(DatabaseManager::migrateToV7);
 		}
+		if (current < 8) {
+			// disband protection: pending request + approvals + cooldown lock
+			inTransaction(DatabaseManager::migrateToV8);
+		}
+	}
+
+	// v8: persisted disband requests/approvals and the cooldown lock column.
+	private static void migrateToV8() throws SQLException {
+		if (tableExists("teams") && !columnExists("teams", "disband_lock_until"))
+			execute("ALTER TABLE teams ADD COLUMN disband_lock_until LONG NOT NULL DEFAULT 0");
+
+		execute("CREATE TABLE IF NOT EXISTS disband_requests (" +
+			"team_id TEXT PRIMARY KEY," +
+			"requested_by TEXT NOT NULL," +
+			"requested_at LONG NOT NULL," +
+			"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)");
+
+		execute("CREATE TABLE IF NOT EXISTS disband_approvals (" +
+			"team_id TEXT NOT NULL," +
+			"player_uuid TEXT NOT NULL," +
+			"approved INTEGER NOT NULL DEFAULT 0," +
+			"PRIMARY KEY (team_id, player_uuid)," +
+			"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)");
+
+		setSchemaVersion(8);
 	}
 
 	// v7: multi-role support, editable role metadata, and the sub-claim permission bit fix.
