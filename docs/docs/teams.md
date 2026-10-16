@@ -6,3 +6,4 @@ A `Team` represents a group of players that can claim and control territory. Bui
 - `StreamCodec` support for sending team data over the network
 - `fromResultSet()` factory for deserializing from SQLite rows
 - Color is stored as a single ARGB `int`, converted to `java.awt.Color` for rendering
+- Teams own their members' [sub-claims](subclaims.md); when a member leaves their sub-claims transfer to the team leader

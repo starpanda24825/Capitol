@@ -13,6 +13,7 @@ or issues, default to denying events.
 - [x] `MANAGE_ROLES` — `TeamCommand`
 - [x] `ASSIGN_ROLES` — `TeamCommand`
 - [x] `MANAGE_TEAM` — `TeamCommand`
+- [x] `CLAIM_SUB_CLAIMS` — `ServerPayloadHandler.handleCreateSubClaim`
 
 ### Block Protection
 - [x] `BREAK_BLOCKS` — `LeftClickBlock` event
@@ -42,3 +43,7 @@ or issues, default to denying events.
 ### Portal / Teleportation
 - [x] `USE_NETHER_PORTALS` — `EntityTravelToDimensionEvent`
 - [x] `CHORUS_FRUIT_TELEPORT` — `EntityTeleportEvent.ChorusFruit`
+
+### Sub-Claim Protections
+A sub-claim's `SubClaimProtection` bitfield is checked before the team-level `TeamProtection` in `ProtectionManager`, so a sub-claim overrides chunk protection inside its box:
+- [x] `EXPLOSION`, `MOB_GRIEFING`, `FIRE`, `PISTON`, `FLUID_FLOW`, `CROP_TRAMPLING`

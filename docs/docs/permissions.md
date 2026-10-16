@@ -13,5 +13,11 @@ Permissions use a bitfield (`long`) where each bit is a specific action. The `Pe
 
 Each `TeamMember` stores a custom permission bitfield that can override role defaults. `PermissionManager` is the entry point — `playerHasBypass` grants ops (level 4) full access. `playerHasPermission` checks a player's permission for a specific chunk.
 
+### Sub-claims
+- `CLAIM_SUB_CLAIMS` (`1L << 27`) gates creating sub-claims; it is checked in `ServerPayloadHandler.handleCreateSubClaim`
+- A sub-claim stores its own `permissions` bitfield: its owner always passes, everyone else is checked against those bits (resolved in `ProtectionManager`)
+- A sub-claim's permission check takes priority over the surrounding chunk's team check, so it can tighten or loosen access inside its box
+- `SubClaimProtection` is a separate bitfield (`EXPLOSION`, `MOB_GRIEFING`, `FIRE`, `PISTON`, `FLUID_FLOW`, `CROP_TRAMPLING`) toggled per sub-claim with `/capitol subclaim protection`
+
 ### Enforcement
-Permission checks are enforced in `PlayerInteractionEvents` on the server side. See [claim_protection.md](../to-do/claim_protection.md) for the full implementation status checklist.
+Permission checks are enforced in `PlayerInteractionEvents` on the server side; sub-claim protections are checked first in `ProtectionManager` for explosion, fire, piston, fluid flow, mob griefing and crop trampling. See [claim_protection.md](../to-do/claim_protection.md) for the full implementation status checklist.
