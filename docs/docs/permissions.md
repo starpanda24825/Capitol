@@ -11,5 +11,11 @@ Roles are rows in `team_roles`, identified by `system_key` when they are system 
 
 Each member has one **base role** (`team_members.role_id`, owner or member) plus any number of **extra roles** (`member_roles`). Effective permissions are `owner ? all : OR(base, extras) | individual overrides`, resolved in one place by `CapitolDatabase.getEffectivePermissions`. `RoleManager` (backed by the pure `RoleRules` helpers) holds every hierarchy and permission rule and is called by both commands and packet handlers, so the rules can't drift apart.
 
+### Sub-claims
+- `CLAIM_SUB_CLAIMS` (`1L << 27`) gates creating sub-claims; it is checked in `ServerPayloadHandler.handleCreateSubClaim`
+- A sub-claim stores its own `permissions` bitfield: its owner always passes, everyone else is checked against those bits (resolved in `ProtectionManager`)
+- A sub-claim's permission check takes priority over the surrounding chunk's team check, so it can tighten or loosen access inside its box
+- `SubClaimProtection` is a separate bitfield (`EXPLOSION`, `MOB_GRIEFING`, `FIRE`, `PISTON`, `FLUID_FLOW`, `CROP_TRAMPLING`) toggled per sub-claim with `/capitol subclaim protection`
+
 ### Enforcement
-Permission checks are enforced in `PlayerInteractionEvents` on the server side. See [claim_protection.md](../to-do/claim_protection.md) for the implementation status checklist and [roles_test_matrix.md](../to-do/roles_test_matrix.md) for the role rules checklist.
+Permission checks are enforced in `PlayerInteractionEvents` on the server side; sub-claim protections are checked first in `ProtectionManager` for explosion, fire, piston, fluid flow, mob griefing and crop trampling. See [claim_protection.md](../to-do/claim_protection.md) for the implementation status checklist and [roles_test.md](../to-do/roles_test.md) for the role rules checklist.

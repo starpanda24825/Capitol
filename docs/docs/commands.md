@@ -53,6 +53,19 @@ Land claiming commands. The player must be in a team to use these.
 
 ---
 
+## /capitol subclaim
+
+Manages the player's own [sub-claims](subclaims.md). All subcommands except `list` require the target sub-claim's ID (shown by `list`).
+
+| Command    | Syntax                                        | Description                                                              | Permission      |
+|------------|-----------------------------------------------|--------------------------------------------------------------------------|-----------------|
+| list       | `/capitol subclaim list`                      | Lists the sub-claims you own, with their names and IDs.                  | None (owner)    |
+| permission | `/capitol subclaim permission <id> <perm>`    | Toggles one `Permission` bit on your sub-claim (suggestions provided).   | None (owner)    |
+| protection | `/capitol subclaim protection <id> <prot>`    | Toggles one `SubClaimProtection` on your sub-claim (suggestions provided). | None (owner)  |
+| delete     | `/capitol subclaim delete <id>`               | Deletes your sub-claim and broadcasts its removal to clients.            | None (owner) or `MANAGE_TEAM` |
+
+---
+
 ## /capitol invites
 
 | Command | Syntax                           | Description                                                                                            | Permission |
