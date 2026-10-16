@@ -219,6 +219,7 @@ public final class RoleManager {
 
 		db().updateRole(role, newName, color != null ? color : role.color(), newPermissions,
 			role.position(), flags != null ? flags : role.flags());
+		if (permissions != null) TeamLifecycleManager.onApproverSetChanged(team);
 		return Check.allow();
 	}
 
@@ -226,6 +227,7 @@ public final class RoleManager {
 		Check allowed = canSetPermissions(actor, team, role, permissions);
 		if (!allowed.ok()) return allowed;
 		db().updateRole(role, role.name(), role.color(), sanitizeFor(role, permissions), role.position(), role.flags());
+		TeamLifecycleManager.onApproverSetChanged(team);
 		return Check.allow();
 	}
 
@@ -247,6 +249,7 @@ public final class RoleManager {
 		Check allowed = canAssignRole(actor, team, role, target);
 		if (!allowed.ok()) return allowed;
 		db().addMemberRole(target, team, role.id());
+		TeamLifecycleManager.onApproverSetChanged(team);
 		return Check.allow();
 	}
 
@@ -254,6 +257,7 @@ public final class RoleManager {
 		Check allowed = canUnassignRole(actor, team, role, target);
 		if (!allowed.ok()) return allowed;
 		db().removeMemberRole(target, team, role.id());
+		TeamLifecycleManager.onApproverSetChanged(team);
 		return Check.allow();
 	}
 
@@ -268,6 +272,7 @@ public final class RoleManager {
 		Check allowed = canKick(actor, team, target);
 		if (!allowed.ok()) return allowed;
 		db().removePlayerFromTeam(target, team);
+		TeamLifecycleManager.onApproverSetChanged(team);
 		return Check.allow();
 	}
 }

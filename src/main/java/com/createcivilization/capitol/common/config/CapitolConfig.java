@@ -24,6 +24,10 @@ public class CapitolConfig {
 	public static final ModConfigSpec.IntValue MAX_ROLES_PER_TEAM;
 	public static final ModConfigSpec.IntValue MAX_EXTRA_ROLES_PER_MEMBER;
 
+	// Disband
+	public static final ModConfigSpec.IntValue DISBAND_APPROVAL_HOURS;
+	public static final ModConfigSpec.IntValue DISBAND_PROTECTION_LOCK_HOURS;
+
 	// Capitol block tiers
 	public static final ModConfigSpec.IntValue CAPITOL_VILLAGE_MAX_CLAIMS;
 	public static final ModConfigSpec.IntValue CAPITOL_TOWN_MAX_CLAIMS;
@@ -132,10 +136,19 @@ public class CapitolConfig {
 			.comment("Maximum extra roles a member can hold on top of their base role. 0 = unlimited.")
 			.defineInRange("maxExtraRolesPerMember", 5, 0, Integer.MAX_VALUE);
 
+		builder.pop();		builder.comment("Disband approval flow.").push("disband");
+
+		DISBAND_APPROVAL_HOURS = builder
+			.comment("How long a pending disband request stays valid, in hours.")
+			.defineInRange("approvalHours", 48, 1, Integer.MAX_VALUE);
+
+		DISBAND_PROTECTION_LOCK_HOURS = builder
+			.comment("After the approver set changes, how long before a new disband can start, in hours.")
+			.defineInRange("protectionLockHours", 24, 0, Integer.MAX_VALUE);
+
 		builder.pop();
 
-		builder.comment(
-			"Capitol block tiers (Village -> Town -> City).",
+		builder.comment("Capitol block tiers (Village -> Town -> City).",
 			"Max claims + upkeep per tier. Not enforced yet - per-block claims/upkeep payment are future work."
 		).push("capitolBlockTiers");
 

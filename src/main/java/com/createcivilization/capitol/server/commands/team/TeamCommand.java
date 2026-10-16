@@ -3,6 +3,7 @@ package com.createcivilization.capitol.server.commands.team;
 import com.createcivilization.capitol.common.data.*;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
 import com.createcivilization.capitol.common.managers.RoleManager;
+import com.createcivilization.capitol.common.managers.TeamLifecycleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkRemove;
 import com.createcivilization.capitol.server.invites.InviteHandler;
@@ -29,6 +30,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.LinkedHashMap;
@@ -95,9 +97,24 @@ public class TeamCommand {
 						return builder.buildFuture();
 					})
 					.executes(TeamCommand::kickPlayer)))
-			.then(Commands.literal("leave").executes(TeamCommand::leaveTeam))
-			.then(Commands.literal("disband").executes(TeamCommand::promptDisband))
-			.then(Commands.literal("confirm_disband").executes(TeamCommand::confirmDisband))
+			.then(Commands.literal("transfer")
+				.then(Commands.argument("player", StringArgumentType.string())
+					.suggests(TeamCommand::suggestMembers)
+					.executes(TeamCommand::transferLeadership)))
+			.then(Commands.literal("leave")
+				.then(Commands.argument("new_leader", StringArgumentType.string())
+					.suggests(TeamCommand::suggestMembers)
+					.executes(TeamCommand::leaveTeamWithLeader))
+				.executes(TeamCommand::leaveTeam))
+			.then(Commands.literal("disband")
+				.then(Commands.literal("approve").executes(context -> respondDisband(context, true)))
+				.then(Commands.literal("deny").executes(context -> respondDisband(context, false)))
+				.then(Commands.literal("cancel").executes(TeamCommand::cancelDisband))
+				.then(Commands.literal("status").executes(TeamCommand::disbandStatus))
+				.executes(TeamCommand::promptDisband))
+			.then(Commands.literal("confirm_disband")
+				.then(Commands.argument("team_name", StringArgumentType.string())
+					.executes(TeamCommand::confirmDisband)))
 			.then(TeamRoleCommand.register())
 			.then(TeamProtectionCommand.register())
 			.then(TeamPlayerCommand.register())
@@ -273,41 +290,59 @@ public class TeamCommand {
 	}
 
 	private static int leaveTeam(CommandContext<CommandSourceStack> context) {
-		CapitolDatabase database = DatabaseManager.database;
+		return leaveTeam(context, null);
+	}
+
+	private static int leaveTeamWithLeader(CommandContext<CommandSourceStack> context) {
+		GameProfile leader = resolveProfile(context, "new_leader");
+		if (leader == null) return 0;
+		return leaveTeam(context, leader.getId());
+	}
+
+	private static int leaveTeam(CommandContext<CommandSourceStack> context, @Nullable UUID newLeader) {
 		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
 
-		Team team = database.getPlayerTeam(player);
-		if (team == null) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.not_in_team_error").withStyle(ChatFormatting.RED));
-			return 0;
-		}
-
-		if (database.getPlayerRole(player, team).isOwner()) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.leave.is_owner").withStyle(ChatFormatting.RED));
-			return 0;
-		}
-
-		database.removePlayerFromTeam(player, team);
+		RoleManager.Check result = TeamLifecycleManager.leaveTeam(player, team, newLeader);
+		if (!result.ok()) return fail(context, result);
 
 		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.leave.success",
 			Component.literal(team.getName()).withStyle(ChatFormatting.GOLD))
-			.withStyle(ChatFormatting.GRAY), false);
+			.withStyle(ChatFormatting.GRAY), true);
+		return 1;
+	}
+
+	private static int transferLeadership(CommandContext<CommandSourceStack> context) {
+		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
+
+		GameProfile target = resolveProfile(context, "player");
+		if (target == null) return 0;
+
+		RoleManager.Check result = TeamLifecycleManager.transferLeadership(player, team, target.getId());
+		if (!result.ok()) return fail(context, result);
+
+		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.transfer.success",
+			Component.literal(target.getName()).withStyle(ChatFormatting.WHITE))
+			.withStyle(ChatFormatting.GRAY), true);
 		return 1;
 	}
 
 	private static int promptDisband(CommandContext<CommandSourceStack> context) {
-		CapitolDatabase database = DatabaseManager.database;
 		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
 
-		Team team = database.getPlayerTeam(player);
-		if (team == null) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.not_in_team_error").withStyle(ChatFormatting.RED));
-			return 0;
-		}
+		RoleManager.Check allowed = TeamLifecycleManager.canStartDisband(player, team);
+		if (!allowed.ok()) return fail(context, allowed);
 
-		if (!Permission.MANAGE_TEAM.hasPermission(database.getPlayerPermission(player, team))) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.disband.no_permission").withStyle(ChatFormatting.RED));
-			return 0;
+		if (TeamLifecycleManager.hasApprovers(team, player.getUUID())) {
+			TeamLifecycleManager.startDisbandRequest(player, team);
+			context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.disband.requested",
+				Component.literal(team.getName()).withStyle(ChatFormatting.GOLD)).withStyle(ChatFormatting.YELLOW), true);
+			return 1;
 		}
 
 		context.getSource().sendSuccess(() ->
@@ -317,7 +352,7 @@ public class TeamCommand {
 				.append(Component.literal(" "))
 				.append(Component.translatable("commands.capitol.team.disband.confirm_yes")
 					.withStyle(s -> s.withColor(ChatFormatting.GREEN).withBold(true)
-						.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/capitol team confirm_disband"))
+						.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/capitol team confirm_disband " + team.getName()))
 						.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("commands.capitol.team.disband.confirm_hover")))))
 				.append(Component.literal(" "))
 				.append(Component.translatable("commands.capitol.team.disband.confirm_no")
@@ -327,33 +362,95 @@ public class TeamCommand {
 	}
 
 	private static int confirmDisband(CommandContext<CommandSourceStack> context) {
-		CapitolDatabase database = DatabaseManager.database;
 		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
 
-		Team team = database.getPlayerTeam(player);
-		if (team == null) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.not_in_team_error").withStyle(ChatFormatting.RED));
-			return 0;
-		}
+		RoleManager.Check allowed = TeamLifecycleManager.canStartDisband(player, team);
+		if (!allowed.ok()) return fail(context, allowed);
 
-		if (!Permission.MANAGE_TEAM.hasPermission(database.getPlayerPermission(player, team))) {
-			context.getSource().sendFailure(Component.translatable("commands.capitol.team.disband.no_permission").withStyle(ChatFormatting.RED));
-			return 0;
-		}
+		// typed-name confirmation to prevent mis-click
+		String typed = StringArgumentType.getString(context, "team_name");
+		if (!typed.equals(team.getName())) return failCommand(context, "commands.capitol.team.disband.name_mismatch");
 
-		List<ClaimedChunk> chunks = database.getTeamChunks(team);
-		database.removeTeam(team);
-
-		for (ClaimedChunk chunk : chunks) {
-			ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(chunk.dimension()));
-			ServerLevel level = context.getSource().getServer().getLevel(dimKey);
-			if (level == null) continue;
-			ChunkPos chunkPos = new ChunkPos(chunk.chunkX(), chunk.chunkZ());
-			S2CChunkRemove packet = new S2CChunkRemove(chunkPos.toLong());
-			PacketDistributor.sendToPlayersTrackingChunk(level, chunkPos, packet);
-		}
-
+		TeamLifecycleManager.finalizeDisband(team);
 		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.disband.success").withStyle(ChatFormatting.GREEN), true);
 		return 1;
+	}
+
+	private static int respondDisband(CommandContext<CommandSourceStack> context, boolean approve) {
+		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
+
+		RoleManager.Check result = TeamLifecycleManager.respondDisband(player, team, approve);
+		if (!result.ok()) return fail(context, result);
+
+		String key = approve ? "commands.capitol.team.disband.approved" : "commands.capitol.team.disband.cancelled";
+		context.getSource().sendSuccess(() -> Component.translatable(key).withStyle(ChatFormatting.GREEN), true);
+		return 1;
+	}
+
+	private static int cancelDisband(CommandContext<CommandSourceStack> context) {
+		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
+
+		RoleManager.Check result = TeamLifecycleManager.cancelDisband(player, team);
+		if (!result.ok()) return fail(context, result);
+
+		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.disband.cancelled").withStyle(ChatFormatting.GREEN), true);
+		return 1;
+	}
+
+	private static int disbandStatus(CommandContext<CommandSourceStack> context) {
+		Player player = context.getSource().getPlayer();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) return failCommand(context, "commands.capitol.not_in_team_error");
+
+		DisbandRequest request = DatabaseManager.database.getDisbandRequest(team);
+		if (request == null) return failCommand(context, "commands.capitol.team.disband.no_request");
+
+		Map<UUID, Boolean> approvals = DatabaseManager.database.getDisbandApprovals(team);
+		context.getSource().sendSuccess(() -> Component.translatable("commands.capitol.team.disband.status_header")
+			.withStyle(ChatFormatting.GOLD), false);
+		for (Map.Entry<UUID, Boolean> entry : approvals.entrySet()) {
+			String name = context.getSource().getServer().getProfileCache().get(entry.getKey())
+				.map(GameProfile::getName).orElse("Unknown");
+			String state = entry.getValue() ? "\u2714" : "...";
+			context.getSource().sendSuccess(() -> Component.literal(name + ": " + state).withStyle(ChatFormatting.GRAY), false);
+		}
+		return 1;
+	}
+
+	private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestMembers(
+		CommandContext<CommandSourceStack> context, com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+		CapitolDatabase database = DatabaseManager.database;
+		Team team = database.getPlayerTeam(context.getSource().getPlayer());
+		if (team == null) return builder.buildFuture();
+		GameProfileCache profileCache = context.getSource().getServer().getProfileCache();
+		for (TeamMember member : database.getTeamMembers(team)) {
+			profileCache.get(member.playerUUID()).ifPresent(profile -> builder.suggest(profile.getName()));
+		}
+		return builder.buildFuture();
+	}
+
+	@Nullable
+	private static GameProfile resolveProfile(CommandContext<CommandSourceStack> context, String argName) {
+		String name = StringArgumentType.getString(context, argName);
+		Optional<GameProfile> profile = context.getSource().getServer().getProfileCache().get(name);
+		if (profile.isEmpty()) {
+			TeamRoleCommand.failCommand(context, "commands.capitol.no_player_found", name);
+			return null;
+		}
+		return profile.get();
+	}
+
+	private static int fail(CommandContext<CommandSourceStack> context, RoleManager.Check result) {
+		return failCommand(context, result.langKey(), result.args());
+	}
+
+	private static int failCommand(CommandContext<CommandSourceStack> context, String key, Object... args) {
+		return TeamRoleCommand.failCommand(context, key, args);
 	}
 }

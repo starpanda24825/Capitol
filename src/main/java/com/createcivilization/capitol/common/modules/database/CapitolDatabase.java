@@ -543,13 +543,7 @@ public class CapitolDatabase extends Database {
 	 * until the name is free. Runs after the player is removed from {@code team_members}.
 	 */
 	private void transferSubClaimsOnLeave(UUID departingPlayer, Team team) {
-		UUID leaderId = null;
-		for (TeamMember member : getTeamMembers(team)) {
-			if (TeamRole.OWNER_ROLE_NAME.equals(member.roleName())) {
-				leaderId = member.playerUUID();
-				break;
-			}
-		}
+		UUID leaderId = getTeamLeader(team);
 		if (leaderId == null || leaderId.equals(departingPlayer)) return;
 
 		// names the leader already owns, plus names assigned during this transfer
@@ -1202,13 +1196,158 @@ public class CapitolDatabase extends Database {
 		}
 	}
 
-	// the player that owns the team (the owner role)
+	// the player that owns the team, found by system key rather than role name
 	@Nullable
 	public UUID getTeamLeader(Team team) {
-		for (TeamMember member : getTeamMembers(team)) {
-			if (member.roleName().equals(TeamRole.OWNER_ROLE_NAME)) return member.playerUUID();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT team_members.player_uuid FROM team_members " +
+					"JOIN team_roles ON team_roles.id = team_members.role_id " +
+					"WHERE team_members.team_id = ? AND team_roles.system_key = 'owner' LIMIT 1")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? UUID.fromString(rs.getString(1)) : null;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting team leader from database.", e);
+			throw new RuntimeException(e);
 		}
-		return null;
+	}
+
+	/**
+	 * Returns the id of the team's Capital capitol block, or null if it has none (not possible?). 
+	 */
+	@Nullable
+	public Long getCapitalBlockId(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT id FROM capitol_blocks WHERE team_id = ? AND is_capital = 1 LIMIT 1")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getLong(1) : null;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting capital block from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	//disband requests / approvals / lock
+
+	public long getDisbandLockUntil(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT disband_lock_until FROM teams WHERE id = ?")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getLong(1) : 0L;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading disband lock from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void setDisbandLockUntil(Team team, long until) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE teams SET disband_lock_until = ? WHERE id = ?")) {
+			ps.setLong(1, until);
+			ps.setString(2, team.getId().toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while writing disband lock to database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Nullable
+	public DisbandRequest getDisbandRequest(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT requested_by, requested_at FROM disband_requests WHERE team_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				if (!rs.next()) return null;
+				return new DisbandRequest(team.getId(), UUID.fromString(rs.getString("requested_by")), rs.getLong("requested_at"));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading disband request from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void upsertDisbandRequest(Team team, UUID requestedBy, long requestedAt) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"INSERT INTO disband_requests (team_id, requested_by, requested_at) VALUES (?, ?, ?) " +
+					"ON CONFLICT(team_id) DO UPDATE SET requested_by = excluded.requested_by, requested_at = excluded.requested_at")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, requestedBy.toString());
+			ps.setLong(3, requestedAt);
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while writing disband request to database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void deleteDisbandRequest(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM disband_requests WHERE team_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while deleting disband request from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	// player -> approved (true) / denied (false). Absent = not yet responded.
+	public Map<UUID, Boolean> getDisbandApprovals(Team team) {
+		Map<UUID, Boolean> approvals = new HashMap<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT player_uuid, approved FROM disband_approvals WHERE team_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) approvals.put(UUID.fromString(rs.getString("player_uuid")), rs.getBoolean("approved"));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading disband approvals from database.", e);
+			throw new RuntimeException(e);
+		}
+		return approvals;
+	}
+
+	public void setDisbandApproval(Team team, UUID player, boolean approved) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"INSERT INTO disband_approvals (team_id, player_uuid, approved) VALUES (?, ?, ?) " +
+					"ON CONFLICT(team_id, player_uuid) DO UPDATE SET approved = excluded.approved")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, player.toString());
+			ps.setBoolean(3, approved);
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while writing disband approval to database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void deleteDisbandApproval(Team team, UUID player) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM disband_approvals WHERE team_id = ? AND player_uuid = ?")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, player.toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while deleting disband approval from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void clearDisbandApprovals(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM disband_approvals WHERE team_id = ?")) {
+			ps.setString(1, team.getId().toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while clearing disband approvals from database.", e);
+			throw new RuntimeException(e);
+		}
 	}
 
 	/**
@@ -1546,6 +1685,21 @@ public class CapitolDatabase extends Database {
 		chunkOwnerCache.values().forEach(dimCache ->
 			dimCache.entrySet().removeIf(e -> e.getValue().isPresent() && e.getValue().get().getId().equals(teamId)));
 		resetCurrentClaims(team);
+	}
+
+	public List<ClaimedChunk> getTeamForceloadedChunks(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT dimension, chunk_x, chunk_z FROM chunks WHERE team_id = ? AND force_loaded = 1")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				List<ClaimedChunk> chunks = new ArrayList<>();
+				while (rs.next()) chunks.add(ClaimedChunk.fromResultSet(rs));
+				return chunks;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error getting forceloaded chunks for team " + team.getId(), e);
+			throw new RuntimeException(e);
+		}
 	}
 
 	public List<ClaimedChunk> getAllForceloadedChunks() {
