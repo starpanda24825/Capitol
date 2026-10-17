@@ -15,7 +15,7 @@ import java.util.List;
 public class DatabaseManager {
 
 	// bump this whenever a migration is added below
-	private static final int SCHEMA_VERSION = 8;
+	private static final int SCHEMA_VERSION = 9;
 
 	public static CapitolDatabase database = new CapitolDatabase();
 
@@ -113,6 +113,30 @@ public class DatabaseManager {
 			);
 			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_role ON member_roles(role_id)");
 			stmt.execute("CREATE INDEX IF NOT EXISTS idx_member_roles_player ON member_roles(player_uuid)");
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS mail (" +
+					"id INTEGER PRIMARY KEY AUTOINCREMENT," +
+					"sender_uuid TEXT," +
+					"sender_team_id TEXT," +
+					"target_team_id TEXT," +
+					"subject TEXT NOT NULL," +
+					"body TEXT NOT NULL," +
+					"sent_at LONG NOT NULL," +
+					"external INTEGER NOT NULL DEFAULT 0)"
+			);
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS mail_recipients (" +
+					"mail_id INTEGER NOT NULL," +
+					"recipient_uuid TEXT NOT NULL," +
+					"is_read INTEGER NOT NULL DEFAULT 0," +
+					"deleted INTEGER NOT NULL DEFAULT 0," +
+					"PRIMARY KEY (mail_id, recipient_uuid)," +
+					"FOREIGN KEY (mail_id) REFERENCES mail (id) ON DELETE CASCADE)"
+			);
+			stmt.execute("CREATE INDEX IF NOT EXISTS idx_mail_recipients_recipient ON mail_recipients(recipient_uuid, deleted)");
+			stmt.execute("CREATE INDEX IF NOT EXISTS idx_mail_sent_at ON mail(sent_at)");
 
 			stmt.execute(
 				"CREATE TABLE IF NOT EXISTS disband_requests (" +
@@ -375,6 +399,36 @@ public class DatabaseManager {
 			// disband protection: pending request + approvals + cooldown lock
 			inTransaction(DatabaseManager::migrateToV8);
 		}
+		if (current < 9) {
+			// mail storage
+			inTransaction(DatabaseManager::migrateToV9);
+		}
+	}
+
+	// v9: mail + per-recipient read/deleted state.
+	private static void migrateToV9() throws SQLException {
+		execute("CREATE TABLE IF NOT EXISTS mail (" +
+			"id INTEGER PRIMARY KEY AUTOINCREMENT," +
+			"sender_uuid TEXT," +
+			"sender_team_id TEXT," +
+			"target_team_id TEXT," +
+			"subject TEXT NOT NULL," +
+			"body TEXT NOT NULL," +
+			"sent_at LONG NOT NULL," +
+			"external INTEGER NOT NULL DEFAULT 0)");
+
+		execute("CREATE TABLE IF NOT EXISTS mail_recipients (" +
+			"mail_id INTEGER NOT NULL," +
+			"recipient_uuid TEXT NOT NULL," +
+			"is_read INTEGER NOT NULL DEFAULT 0," +
+			"deleted INTEGER NOT NULL DEFAULT 0," +
+			"PRIMARY KEY (mail_id, recipient_uuid)," +
+			"FOREIGN KEY (mail_id) REFERENCES mail (id) ON DELETE CASCADE)");
+
+		execute("CREATE INDEX IF NOT EXISTS idx_mail_recipients_recipient ON mail_recipients(recipient_uuid, deleted)");
+		execute("CREATE INDEX IF NOT EXISTS idx_mail_sent_at ON mail(sent_at)");
+
+		setSchemaVersion(9);
 	}
 
 	// v8: persisted disband requests/approvals and the cooldown lock column.
