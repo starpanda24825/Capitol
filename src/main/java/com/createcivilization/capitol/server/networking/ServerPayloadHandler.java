@@ -14,6 +14,7 @@ import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.item.SubClaimWand;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
 import com.createcivilization.capitol.common.managers.RoleManager;
+import com.createcivilization.capitol.common.managers.TeamLifecycleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
 import com.createcivilization.capitol.common.networking.packets.C2SChunkRequest;
@@ -23,6 +24,11 @@ import com.createcivilization.capitol.common.networking.packets.C2SEditRole;
 import com.createcivilization.capitol.common.networking.packets.C2SKickMember;
 import com.createcivilization.capitol.common.networking.packets.C2SMoveRole;
 import com.createcivilization.capitol.common.networking.packets.C2SSetRolePermissions;
+import com.createcivilization.capitol.common.networking.packets.C2STransferLeadership;
+import com.createcivilization.capitol.common.networking.packets.C2SLeaveTeam;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestDisband;
+import com.createcivilization.capitol.common.networking.packets.C2SRespondDisband;
+import com.createcivilization.capitol.common.networking.packets.C2SCancelDisband;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubClaim;
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
@@ -807,6 +813,85 @@ public class ServerPayloadHandler {
 					Component.literal(team.getName()).withStyle(ChatFormatting.GOLD)).withStyle(ChatFormatting.RED));
 			}
 		}
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	// leadership/disband from the team manager
+
+	public static void handleTransferLeadership(final C2STransferLeadership request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = TeamLifecycleManager.transferLeadership(player, team, request.target());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleLeaveTeam(final C2SLeaveTeam request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = TeamLifecycleManager.leaveTeam(player, team,
+			request.hasLeader() ? request.newLeader() : null);
+		sendAction(player, result);
+	}
+
+	public static void handleRequestDisband(final C2SRequestDisband request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check allowed = TeamLifecycleManager.canStartDisband(player, team);
+		if (!allowed.ok()) {
+			sendAction(player, allowed);
+			return;
+		}
+
+		if (TeamLifecycleManager.hasApprovers(team, player.getUUID())) {
+			TeamLifecycleManager.startDisbandRequest(player, team);
+			sendAction(player, RoleManager.Check.allow());
+			TeamDirectoryManager.broadcast(team);
+			return;
+		}
+
+		// no approvers: the GUI must confirm by typing the team name
+		if (!request.confirmName().equals(team.getName())) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.disband.needs_confirm"));
+			return;
+		}
+		TeamLifecycleManager.finalizeDisband(team);
+		sendAction(player, RoleManager.Check.allow());
+	}
+
+	public static void handleRespondDisband(final C2SRespondDisband request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = TeamLifecycleManager.respondDisband(player, team, request.approve());
+		sendAction(player, result);
+		if (result.ok()) TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleCancelDisband(final C2SCancelDisband request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		RoleManager.Check result = TeamLifecycleManager.cancelDisband(player, team);
 		sendAction(player, result);
 		if (result.ok()) TeamDirectoryManager.broadcast(team);
 	}

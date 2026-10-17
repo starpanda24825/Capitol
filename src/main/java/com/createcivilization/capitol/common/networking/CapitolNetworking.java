@@ -29,6 +29,12 @@ import com.createcivilization.capitol.common.networking.packets.C2SMoveRole;
 import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
 import com.createcivilization.capitol.common.networking.packets.C2SKickMember;
 import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
+import com.createcivilization.capitol.common.networking.packets.S2CBookInvalidate;
+import com.createcivilization.capitol.common.networking.packets.C2STransferLeadership;
+import com.createcivilization.capitol.common.networking.packets.C2SLeaveTeam;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestDisband;
+import com.createcivilization.capitol.common.networking.packets.C2SRespondDisband;
+import com.createcivilization.capitol.common.networking.packets.C2SCancelDisband;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -253,6 +259,42 @@ public class CapitolNetworking {
 			S2CActionResult.TYPE,
 			S2CActionResult.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ClientPayloadHandler::actionResultHandler)
+		);
+
+		registrar.playToClient(
+			S2CBookInvalidate.TYPE,
+			S2CBookInvalidate.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::bookInvalidateHandler)
+		);
+
+		registrar.playToServer(
+			C2STransferLeadership.TYPE,
+			C2STransferLeadership.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleTransferLeadership)
+		);
+
+		registrar.playToServer(
+			C2SLeaveTeam.TYPE,
+			C2SLeaveTeam.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleLeaveTeam)
+		);
+
+		registrar.playToServer(
+			C2SRequestDisband.TYPE,
+			C2SRequestDisband.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRequestDisband)
+		);
+
+		registrar.playToServer(
+			C2SRespondDisband.TYPE,
+			C2SRespondDisband.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRespondDisband)
+		);
+
+		registrar.playToServer(
+			C2SCancelDisband.TYPE,
+			C2SCancelDisband.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleCancelDisband)
 		);
 	}
 
