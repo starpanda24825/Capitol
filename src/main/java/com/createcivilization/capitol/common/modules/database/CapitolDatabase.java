@@ -23,6 +23,7 @@ public class CapitolDatabase extends Database {
 	private final ConcurrentHashMap<UUID, Long> teamPermissionsCache = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<UUID, Map<UUID, Long>> playerPermCache = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<UUID, Map<UUID, Optional<Long>>> individualPermCache = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<UUID, Integer> unreadMailCache = new ConcurrentHashMap<>();
 
 	public void clearCache() {
 		chunkOwnerCache.clear();
@@ -30,6 +31,7 @@ public class CapitolDatabase extends Database {
 		teamPermissionsCache.clear();
 		playerPermCache.clear();
 		individualPermCache.clear();
+		unreadMailCache.clear();
 	}
 
 	/**
@@ -1348,6 +1350,191 @@ public class CapitolDatabase extends Database {
 			Capitol.LOGGER.error("Error while clearing disband approvals from database.", e);
 			throw new RuntimeException(e);
 		}
+	}
+
+	// mail
+
+	//Inserts one mail row plus a recipient row for each player, in a transaction.
+	public long insertMail(@Nullable UUID senderUuid, @Nullable UUID senderTeamId, @Nullable UUID targetTeamId,
+						   String subject, String body, boolean external, Collection<UUID> recipients) {
+		long[] mailId = {-1L};
+		long sentAt = System.currentTimeMillis();
+		inTransaction(() -> {
+			long id;
+			try (PreparedStatement ps = getConnection().prepareStatement(
+					"INSERT INTO mail (sender_uuid, sender_team_id, target_team_id, subject, body, sent_at, external) VALUES (?, ?, ?, ?, ?, ?, ?)",
+					Statement.RETURN_GENERATED_KEYS)) {
+				ps.setString(1, senderUuid == null ? null : senderUuid.toString());
+				ps.setString(2, senderTeamId == null ? null : senderTeamId.toString());
+				ps.setString(3, targetTeamId == null ? null : targetTeamId.toString());
+				ps.setString(4, subject);
+				ps.setString(5, body);
+				ps.setLong(6, sentAt);
+				ps.setBoolean(7, external);
+				ps.executeUpdate();
+				try (ResultSet keys = ps.getGeneratedKeys()) {
+					if (!keys.next()) throw new SQLException("No mail id returned");
+					id = keys.getLong(1);
+				}
+			}
+			try (PreparedStatement ps = getConnection().prepareStatement(
+					"INSERT OR IGNORE INTO mail_recipients (mail_id, recipient_uuid, is_read, deleted) VALUES (?, ?, 0, 0)")) {
+				for (UUID recipient : recipients) {
+					ps.setLong(1, id);
+					ps.setString(2, recipient.toString());
+					ps.addBatch();
+				}
+				ps.executeBatch();
+			}
+			mailId[0] = id;
+		});
+		for (UUID recipient : recipients) unreadMailCache.merge(recipient, 1, Integer::sum);
+		return mailId[0];
+	}
+
+	public List<MailHeader> getInboxPage(UUID playerUuid, int page, int size) {
+		List<MailHeader> headers = new ArrayList<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT mail.id, mail.sender_uuid, mail.sender_team_id, mail.subject, mail.sent_at, mail.external, mail_recipients.is_read " +
+					"FROM mail JOIN mail_recipients ON mail_recipients.mail_id = mail.id " +
+					"WHERE mail_recipients.recipient_uuid = ? AND mail_recipients.deleted = 0 " +
+					"ORDER BY mail.sent_at DESC LIMIT ? OFFSET ?")) {
+			ps.setString(1, playerUuid.toString());
+			ps.setInt(2, size);
+			ps.setInt(3, Math.max(0, page) * size);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) headers.add(readHeader(rs, rs.getBoolean("is_read")));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading mail inbox from database.", e);
+			throw new RuntimeException(e);
+		}
+		return headers;
+	}
+
+	public List<MailHeader> getSentPage(UUID playerUuid, int page, int size) {
+		List<MailHeader> headers = new ArrayList<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT id, sender_uuid, sender_team_id, subject, sent_at, external FROM mail " +
+					"WHERE sender_uuid = ? ORDER BY sent_at DESC LIMIT ? OFFSET ?")) {
+			ps.setString(1, playerUuid.toString());
+			ps.setInt(2, size);
+			ps.setInt(3, Math.max(0, page) * size);
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) headers.add(readHeader(rs, true));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading sent mail from database.", e);
+			throw new RuntimeException(e);
+		}
+		return headers;
+	}
+
+	private MailHeader readHeader(ResultSet rs, boolean read) throws SQLException {
+		return new MailHeader(
+			rs.getLong("id"),
+			nullableUuid(rs.getString("sender_uuid")),
+			nullableUuid(rs.getString("sender_team_id")),
+			rs.getString("subject"),
+			rs.getLong("sent_at"),
+			read,
+			rs.getBoolean("external")
+		);
+	}
+
+	//Body is only returned to the sender or a recipient.
+	@Nullable
+	public MailBody getMailBody(long mailId, UUID viewer) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT id, sender_uuid, sender_team_id, subject, body, sent_at, external FROM mail " +
+					"WHERE id = ? AND (sender_uuid = ? OR EXISTS (" +
+					"SELECT 1 FROM mail_recipients WHERE mail_recipients.mail_id = mail.id AND mail_recipients.recipient_uuid = ? AND mail_recipients.deleted = 0))")) {
+			ps.setLong(1, mailId);
+			ps.setString(2, viewer.toString());
+			ps.setString(3, viewer.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				if (!rs.next()) return null;
+				return new MailBody(
+					rs.getLong("id"),
+					nullableUuid(rs.getString("sender_uuid")),
+					nullableUuid(rs.getString("sender_team_id")),
+					rs.getString("subject"),
+					rs.getString("body"),
+					rs.getLong("sent_at"),
+					rs.getBoolean("external")
+				);
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while reading mail body from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void markMailRead(long mailId, UUID playerUuid) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE mail_recipients SET is_read = 1 WHERE mail_id = ? AND recipient_uuid = ? AND is_read = 0")) {
+			ps.setLong(1, mailId);
+			ps.setString(2, playerUuid.toString());
+			if (ps.executeUpdate() > 0) unreadMailCache.computeIfPresent(playerUuid, (k, v) -> Math.max(0, v - 1));
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while marking mail read in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void deleteMailFor(long mailId, UUID playerUuid) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE mail_recipients SET deleted = 1 WHERE mail_id = ? AND recipient_uuid = ? AND deleted = 0 AND is_read = 0")) {
+			ps.setLong(1, mailId);
+			ps.setString(2, playerUuid.toString());
+			if (ps.executeUpdate() > 0) unreadMailCache.computeIfPresent(playerUuid, (k, v) -> Math.max(0, v - 1));
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while deleting mail in database.", e);
+			throw new RuntimeException(e);
+		}
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"UPDATE mail_recipients SET deleted = 1 WHERE mail_id = ? AND recipient_uuid = ? AND deleted = 0 AND is_read = 1")) {
+			ps.setLong(1, mailId);
+			ps.setString(2, playerUuid.toString());
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while deleting read mail in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public int countUnreadMail(UUID playerUuid) {
+		Integer cached = unreadMailCache.get(playerUuid);
+		if (cached != null) return cached;
+		int unread;
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT COUNT(*) FROM mail_recipients WHERE recipient_uuid = ? AND is_read = 0 AND deleted = 0")) {
+			ps.setString(1, playerUuid.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				unread = rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while counting unread mail in database.", e);
+			throw new RuntimeException(e);
+		}
+		unreadMailCache.put(playerUuid, unread);
+		return unread;
+	}
+
+	public void purgeMailOlderThan(long cutoffMillis) {
+		try (PreparedStatement ps = getConnection().prepareStatement("DELETE FROM mail WHERE sent_at < ?")) {
+			ps.setLong(1, cutoffMillis);
+			ps.execute();
+			unreadMailCache.clear();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while purging old mail from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Nullable
+	private static UUID nullableUuid(@Nullable String value) {
+		return value == null || value.isEmpty() ? null : UUID.fromString(value);
 	}
 
 	/**

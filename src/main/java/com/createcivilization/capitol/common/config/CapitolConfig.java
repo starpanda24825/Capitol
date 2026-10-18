@@ -28,6 +28,17 @@ public class CapitolConfig {
 	public static final ModConfigSpec.IntValue DISBAND_APPROVAL_HOURS;
 	public static final ModConfigSpec.IntValue DISBAND_PROTECTION_LOCK_HOURS;
 
+	// Mail
+	public static final ModConfigSpec.BooleanValue MAIL_ENABLED;
+	public static final ModConfigSpec.BooleanValue MAIL_ALLOW_EXTERNAL;
+	public static final ModConfigSpec.IntValue MAIL_SUBJECT_MAX;
+	public static final ModConfigSpec.IntValue MAIL_BODY_MAX;
+	public static final ModConfigSpec.IntValue MAIL_MAX_RECIPIENTS;
+	public static final ModConfigSpec.IntValue MAIL_INBOX_LIMIT;
+	public static final ModConfigSpec.IntValue MAIL_RETENTION_DAYS;
+	public static final ModConfigSpec.IntValue MAIL_SEND_COOLDOWN_SECONDS;
+	public static final ModConfigSpec.IntValue MAIL_EXTERNAL_COOLDOWN_SECONDS;
+
 	// Capitol block tiers
 	public static final ModConfigSpec.IntValue CAPITOL_VILLAGE_MAX_CLAIMS;
 	public static final ModConfigSpec.IntValue CAPITOL_TOWN_MAX_CLAIMS;
@@ -145,6 +156,20 @@ public class CapitolConfig {
 		DISBAND_PROTECTION_LOCK_HOURS = builder
 			.comment("After the approver set changes, how long before a new disband can start, in hours.")
 			.defineInRange("protectionLockHours", 24, 0, Integer.MAX_VALUE);
+
+		builder.pop();
+
+		builder.comment("In-team mail and its limits.").push("mail");
+
+		MAIL_ENABLED = builder.comment("Whether mail is enabled at all.").define("enabled", true);
+		MAIL_ALLOW_EXTERNAL = builder.comment("Whether teams can mail other teams.").define("allowExternal", true);
+		MAIL_SUBJECT_MAX = builder.comment("Max subject length.").defineInRange("subjectMax", 48, 1, 512);
+		MAIL_BODY_MAX = builder.comment("Max body length.").defineInRange("bodyMax", 512, 1, 8192);
+		MAIL_MAX_RECIPIENTS = builder.comment("Max recipients per message.").defineInRange("maxRecipients", 50, 1, 1000);
+		MAIL_INBOX_LIMIT = builder.comment("Max messages in an inbox before the oldest read ones are dropped. 0 = unlimited.").defineInRange("inboxLimit", 100, 0, Integer.MAX_VALUE);
+		MAIL_RETENTION_DAYS = builder.comment("How many days mail is kept before it is purged.").defineInRange("retentionDays", 30, 1, Integer.MAX_VALUE);
+		MAIL_SEND_COOLDOWN_SECONDS = builder.comment("Seconds between sends.").defineInRange("sendCooldownSeconds", 5, 0, Integer.MAX_VALUE);
+		MAIL_EXTERNAL_COOLDOWN_SECONDS = builder.comment("Seconds between external sends.").defineInRange("externalCooldownSeconds", 60, 0, Integer.MAX_VALUE);
 
 		builder.pop();
 
