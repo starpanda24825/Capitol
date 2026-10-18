@@ -97,6 +97,18 @@
 	"commands.capitol.team.disband.needs_confirm": "Type the team name to confirm the disband.",
 	"commands.capitol.team.disband.notify": "Your team %s has been disbanded.",
 
+	"commands.capitol.mail.disabled": "Mail is disabled on this server.",
+	"commands.capitol.mail.empty_subject": "A message needs a subject.",
+	"commands.capitol.mail.no_permission": "You do not have permission to send mail to that target.",
+	"commands.capitol.mail.no_recipients": "No valid recipients.",
+	"commands.capitol.mail.too_many_recipients": "Too many recipients (max %s).",
+	"commands.capitol.mail.cooldown": "Wait %s second(s) before sending again.",
+	"commands.capitol.mail.inbox_full": "A recipient's inbox is full.",
+	"commands.capitol.mail.role_not_mailable": "The role %s cannot be mailed as a group.",
+	"commands.capitol.mail.external_disabled": "External mail is disabled on this server.",
+	"commands.capitol.mail.external_not_found": "That team does not exist.",
+	"commands.capitol.mail.no_external_recipients": "That team has no members accepting external mail.",
+
 	"commands.capitol.team.role.no_manage_permission": "You do not have permission to edit this role",
 	"commands.capitol.team.role.not_found": "The role %s does not exist in %s",
 	"commands.capitol.team.role.hierarchy.too_high": "That role or member is at or above your rank",

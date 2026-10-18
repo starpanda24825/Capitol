@@ -1521,6 +1521,19 @@ public class CapitolDatabase extends Database {
 		return unread;
 	}
 
+	public int countInboxMail(UUID playerUuid) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT COUNT(*) FROM mail_recipients WHERE recipient_uuid = ? AND deleted = 0")) {
+			ps.setString(1, playerUuid.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while counting inbox mail in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
 	public void purgeMailOlderThan(long cutoffMillis) {
 		try (PreparedStatement ps = getConnection().prepareStatement("DELETE FROM mail WHERE sent_at < ?")) {
 			ps.setLong(1, cutoffMillis);
