@@ -1,0 +1,7 @@
+# Mail
+
+Mail is an in-game messaging system: players in a team can send messages to specific members, one or more roles (expanded to members at send time), the whole team, or — with `SEND_MAIL_EXTERNAL` — another team's `RECEIVE_EXTERNAL_MAIL` holders. Each kind of target needs its own permission (`SEND_MAIL_MEMBERS`, `SEND_MAIL_ROLES`, `SEND_MAIL_TEAM_WIDE`, `SEND_MAIL_EXTERNAL`), and roles can opt out of being mailed as a group with the "mailable" flag. `MailManager.resolveRecipients` does all of this in one place, dedupes, drops the sender, and rejects the send if no valid recipients remain rather than silently dropping anyone.
+
+Storage is one `mail` row per message plus one `mail_recipients` row per recipient (read/deleted flags), so a message survives team disband for its recipients until retention. Inboxes list headers only (id, sender name/team, subject, timestamp, read, external); bodies are fetced on open, which also clears the unread flag. Unread counts are cached in memory per player and pushed on login and on new mail. Old mail is purged once on server start by `retentionDays`.
+
+System mail (sender is null) is used for plugin events: invites, disband requests, leadership transfer, role assign/remove, mayor assignment and sub-claim transfers. Limits (subject/body length, max recipients, inbox cap, send/external cooldowns, retention) all come from `CapitolConfig`. The `/capitol mail ...` commands drive the same `MailManager` calls the GUI uses through packets.

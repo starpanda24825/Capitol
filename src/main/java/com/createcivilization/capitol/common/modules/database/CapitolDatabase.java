@@ -1395,7 +1395,8 @@ public class CapitolDatabase extends Database {
 	public List<MailHeader> getInboxPage(UUID playerUuid, int page, int size) {
 		List<MailHeader> headers = new ArrayList<>();
 		try (PreparedStatement ps = getConnection().prepareStatement(
-				"SELECT mail.id, mail.sender_uuid, mail.sender_team_id, mail.subject, mail.sent_at, mail.external, mail_recipients.is_read " +
+				"SELECT mail.id, mail.sender_uuid, mail.sender_team_id, mail.target_team_id, mail.subject, mail.sent_at, mail.external, mail_recipients.is_read, " +
+					"(SELECT COUNT(*) FROM mail_recipients r WHERE r.mail_id = mail.id AND r.deleted = 0) AS recipients " +
 					"FROM mail JOIN mail_recipients ON mail_recipients.mail_id = mail.id " +
 					"WHERE mail_recipients.recipient_uuid = ? AND mail_recipients.deleted = 0 " +
 					"ORDER BY mail.sent_at DESC LIMIT ? OFFSET ?")) {
@@ -1415,8 +1416,9 @@ public class CapitolDatabase extends Database {
 	public List<MailHeader> getSentPage(UUID playerUuid, int page, int size) {
 		List<MailHeader> headers = new ArrayList<>();
 		try (PreparedStatement ps = getConnection().prepareStatement(
-				"SELECT id, sender_uuid, sender_team_id, subject, sent_at, external FROM mail " +
-					"WHERE sender_uuid = ? ORDER BY sent_at DESC LIMIT ? OFFSET ?")) {
+				"SELECT id, sender_uuid, sender_team_id, target_team_id, subject, sent_at, external, " +
+					"(SELECT COUNT(*) FROM mail_recipients r WHERE r.mail_id = mail.id AND r.deleted = 0) AS recipients " +
+					"FROM mail WHERE sender_uuid = ? ORDER BY sent_at DESC LIMIT ? OFFSET ?")) {
 			ps.setString(1, playerUuid.toString());
 			ps.setInt(2, size);
 			ps.setInt(3, Math.max(0, page) * size);
@@ -1435,10 +1437,12 @@ public class CapitolDatabase extends Database {
 			rs.getLong("id"),
 			nullableUuid(rs.getString("sender_uuid")),
 			nullableUuid(rs.getString("sender_team_id")),
+			nullableUuid(rs.getString("target_team_id")),
 			rs.getString("subject"),
 			rs.getLong("sent_at"),
 			read,
-			rs.getBoolean("external")
+			rs.getBoolean("external"),
+			rs.getInt("recipients")
 		);
 	}
 

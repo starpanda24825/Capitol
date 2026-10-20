@@ -8,6 +8,10 @@ Capitol uses SQLite (`capitol.db`) stored in the world save folder. `DatabaseMan
 - **sub_claims** — `id` (UUID text, PK), `team_id`, `name`, `dimension`, inclusive `min_x/min_y/min_z` + `max_x/max_y/max_z`, `owner_uuid`, `permissions` (bitfield), `protections` (bitfield). FK to teams with CASCADE delete. See [subclaims.md](subclaims.md)
 
 Schema changes ship as numbered migrations in `DatabaseManager.runMigrations`; the `sub_claims` table is version **6** (creating it, or adding `owner_uuid`/`permissions`/`protections` to older tables).
+- **mail** — `id` (autoincrement PK), `sender_uuid`/`sender_team_id`/`target_team_id` (nullable, plain text so mail outlives a disband), `subject`, `body`, `sent_at`, `external`
+- **mail_recipients** — `mail_id` + `recipient_uuid` (composite PK), `is_read`, `deleted`. FK to `mail` with CASCADE delete
+
+Schema migrations run in order inside a transaction, copy `capitol.db` to `capitol.db.bak-v<old>` first and bump `PRAGMA user_version` (currently **9**).
 
 ### Access Layer
 `CapitolDatabase` (extends abstract `Database`) handles all CRUD operations via `PreparedStatement` with parameter binding:

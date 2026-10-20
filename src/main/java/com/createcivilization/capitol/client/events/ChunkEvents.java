@@ -3,6 +3,7 @@ package com.createcivilization.capitol.client.events;
 import com.createcivilization.capitol.Capitol;
 import com.createcivilization.capitol.client.TeamChatState;
 import com.createcivilization.capitol.client.networking.ClientClaimCache;
+import com.createcivilization.capitol.client.networking.ClientMailCache;
 import com.createcivilization.capitol.client.networking.ClientSubClaimCache;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.networking.packets.C2SChunkRequest;
@@ -30,7 +31,7 @@ public class ChunkEvents {
 	private static boolean hasLastTerritory = false;
 	private static UUID lastTerritoryTeamId = null;
 
-	/**
+	/*
 	 * Handles sending packets to server when loading chunks to fetch claims and adding to cache
 	 */
 	@SubscribeEvent
@@ -122,6 +123,7 @@ public class ChunkEvents {
 	private static void onClientDisconnect(ClientPlayerNetworkEvent.LoggingOut event) {
 		ClientClaimCache.clearClaims();
 		ClientSubClaimCache.clear();
+		ClientMailCache.clear();
 		lastPlayerChunk = null;
 		pendingChunkAnnouncement = null;
 		hasLastTerritory = false;

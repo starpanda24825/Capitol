@@ -12,6 +12,9 @@ import com.createcivilization.capitol.common.networking.packets.S2CSubClaimRemov
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolNamingScreen;
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolScreen;
 import com.createcivilization.capitol.common.networking.packets.S2CSyncWars;
+import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
+import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
+import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
@@ -66,5 +69,22 @@ public class ClientPayloadHandler {
 		if (payload.success()) return;
 		context.player().displayClientMessage(
 			Component.translatable(payload.langKey(), payload.args().toArray()).withStyle(ChatFormatting.RED), false);
+	}
+
+	public static void inboxPageHandler(final S2CInboxPage payload, final IPayloadContext context) {
+		ClientMailCache.setPage(payload);
+		ClientMailCache.setUnread(payload.unread());
+	}
+
+	public static void mailBodyHandler(final S2CMailBody payload, final IPayloadContext context) {
+		ClientMailCache.setOpenMail(payload);
+	}
+
+	public static void mailUnreadHandler(final S2CMailUnread payload, final IPayloadContext context) {
+		ClientMailCache.setUnread(payload.count());
+	}
+
+	public static void bookInvalidateHandler(final S2CBookInvalidate payload, final IPayloadContext context) {
+		// TODO: mark the affected tabs stale in BookState and re-request the visible one
 	}
 }

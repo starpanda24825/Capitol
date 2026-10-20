@@ -1,12 +1,18 @@
 package com.createcivilization.capitol.common.managers;
 
 import com.createcivilization.capitol.common.config.CapitolConfig;
+import com.createcivilization.capitol.common.data.MailBody;
+import com.createcivilization.capitol.common.data.MailHeader;
+import com.createcivilization.capitol.common.data.MailSummary;
 import com.createcivilization.capitol.common.data.Permission;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
 import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
+import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
+import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
 import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
+import com.mojang.authlib.GameProfile;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -14,6 +20,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -100,7 +107,70 @@ public final class MailManager {
 		}
 	}
 
+	//inbox / sent views
+
+	// Rows per book page; the GUI lays out roughly this many at row height 14.
+	public static final int PAGE_SIZE = 9;
+	public static final String BOX_INBOX = "inbox";
+	public static final String BOX_SENT = "sent";
+
+	//Builds one page of a box with names already resolved, ready to send.
+	public static S2CInboxPage buildPage(Player viewer, String box, int page) {
+		UUID uuid = viewer.getUUID();
+		boolean sent = BOX_SENT.equalsIgnoreCase(box);
+		int cleanPage = Math.max(0, page);
+		List<MailHeader> headers = sent
+			? db().getSentPage(uuid, cleanPage, PAGE_SIZE)
+			: db().getInboxPage(uuid, cleanPage, PAGE_SIZE);
+
+		List<MailSummary> rows = new ArrayList<>(headers.size());
+		for (MailHeader header : headers) {
+			rows.add(new MailSummary(
+				header.id(),
+				sent ? null : playerName(viewer, header.senderUuid()),
+				sent ? teamName(header.targetTeamId()) : teamName(header.senderTeamId()),
+				header.subject(), header.sentAt(), header.read(), header.external(), header.recipients()));
+		}
+		return new S2CInboxPage(sent ? BOX_SENT : BOX_INBOX, cleanPage, db().countUnreadMail(uuid), rows);
+	}
+
+	// Full body of one mail; reading it clears the unread flag.
+	@Nullable
+	public static S2CMailBody open(Player viewer, long mailId) {
+		MailBody body = db().getMailBody(mailId, viewer.getUUID());
+		if (body == null) return null;
+		db().markMailRead(mailId, viewer.getUUID());
+		return new S2CMailBody(body.id(), playerName(viewer, body.senderUuid()), teamName(body.senderTeamId()),
+			body.subject(), body.body(), body.sentAt(), body.external());
+	}
+
+	// Applies "READ" or "DELETE" to one mail.
+	public static void applyAction(Player viewer, long mailId, String action) {
+		if ("DELETE".equalsIgnoreCase(action)) db().deleteMailFor(mailId, viewer.getUUID());
+		else db().markMailRead(mailId, viewer.getUUID());
+	}
+
 	//helpers
+
+	// display name that also works for offline players via the profile cache
+	@Nullable
+	private static String playerName(Player viewer, @Nullable UUID uuid) {
+		if (uuid == null) return null;
+		MinecraftServer server = viewer.getServer();
+		if (server != null) {
+			ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+			if (online != null) return online.getName().getString();
+			return server.getProfileCache().get(uuid).map(GameProfile::getName).orElse(null);
+		}
+		return null;
+	}
+
+	@Nullable
+	private static String teamName(@Nullable UUID teamId) {
+		if (teamId == null) return null;
+		Team team = db().getTeam(teamId);
+		return team == null ? null : team.getName();
+	}
 
 	private static RoleManager.Check resolveInternal(Team team, Target target, long perms, Set<UUID> recipients) {
 		if (target.wholeTeam()) {

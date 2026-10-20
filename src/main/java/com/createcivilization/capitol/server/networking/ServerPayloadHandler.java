@@ -12,7 +12,9 @@ import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
 import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.item.SubClaimWand;
+import com.createcivilization.capitol.common.data.MailTargetKind;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
+import com.createcivilization.capitol.common.managers.MailManager;
 import com.createcivilization.capitol.common.managers.RoleManager;
 import com.createcivilization.capitol.common.managers.TeamLifecycleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
@@ -33,6 +35,10 @@ import com.createcivilization.capitol.common.networking.packets.C2SCreateSubClai
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
 import com.createcivilization.capitol.common.networking.packets.C2SInvitePlayer;
+import com.createcivilization.capitol.common.networking.packets.C2SMailAction;
+import com.createcivilization.capitol.common.networking.packets.C2SOpenMail;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestInbox;
+import com.createcivilization.capitol.common.networking.packets.C2SSendMail;
 import com.createcivilization.capitol.common.networking.packets.C2SNameCapitolBlock;
 import com.createcivilization.capitol.common.networking.packets.C2SCancelCapitolBlockNaming;
 import com.createcivilization.capitol.common.networking.packets.C2SSetCapitolBlockMayor;
@@ -43,6 +49,8 @@ import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimData;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimRemove;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkData;
+import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
+import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import com.createcivilization.capitol.common.networking.packets.S2CChunkRemove;
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolNamingScreen;
 import com.createcivilization.capitol.common.networking.packets.S2COpenCapitolScreen;
@@ -67,6 +75,8 @@ import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.HashSet;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -896,7 +906,60 @@ public class ServerPayloadHandler {
 		if (result.ok()) TeamDirectoryManager.broadcast(team);
 	}
 
-	// the GUI shows failures; successes are silent
+	// --- mail ---
+
+	public static void handleSendMail(final C2SSendMail request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+
+		MailTargetKind kind = MailTargetKind.fromName(request.targetKind());
+		UUID externalTeamId = null;
+		if (kind == MailTargetKind.EXTERNAL) {
+			Team targetTeam = DatabaseManager.database.getTeamByName(request.externalTeamName());
+			if (targetTeam == null) {
+				sendAction(player, RoleManager.Check.deny("commands.capitol.mail.external_not_found"));
+				return;
+			}
+			externalTeamId = targetTeam.getId();
+		}
+
+		MailManager.Target target = new MailManager.Target(
+			new HashSet<>(request.recipients()),
+			new HashSet<>(request.roleIds()),
+			kind == MailTargetKind.WHOLE_TEAM,
+			externalTeamId);
+		sendAction(player, MailManager.send(player, team, target, request.subject(), request.body()));
+	}
+
+	public static void handleRequestInbox(final C2SRequestInbox request, final IPayloadContext context) {
+		Player player = context.player();
+		PacketDistributor.sendToPlayer((ServerPlayer) player, MailManager.buildPage(player, request.box(), request.page()));
+	}
+
+	public static void handleOpenMail(final C2SOpenMail request, final IPayloadContext context) {
+		Player player = context.player();
+		S2CMailBody body = MailManager.open(player, request.id());
+		if (body == null) return;
+		PacketDistributor.sendToPlayer((ServerPlayer) player, body);
+		pushUnread(player);
+	}
+
+	public static void handleMailAction(final C2SMailAction request, final IPayloadContext context) {
+		Player player = context.player();
+		MailManager.applyAction(player, request.id(), request.action());
+		pushUnread(player);
+	}
+
+	private static void pushUnread(Player player) {
+		PacketDistributor.sendToPlayer((ServerPlayer) player,
+			new S2CMailUnread(DatabaseManager.database.countUnreadMail(player.getUUID())));
+	}
+
+	// the GUI shows failures as a toast; successes are silent
 	private static void sendAction(Player player, RoleManager.Check result) {
 		List<String> args = new ArrayList<>();
 		for (Object arg : result.args()) args.add(String.valueOf(arg));

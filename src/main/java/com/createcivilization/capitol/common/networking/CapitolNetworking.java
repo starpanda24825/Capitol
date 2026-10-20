@@ -35,6 +35,13 @@ import com.createcivilization.capitol.common.networking.packets.C2SLeaveTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestDisband;
 import com.createcivilization.capitol.common.networking.packets.C2SRespondDisband;
 import com.createcivilization.capitol.common.networking.packets.C2SCancelDisband;
+import com.createcivilization.capitol.common.networking.packets.C2SSendMail;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestInbox;
+import com.createcivilization.capitol.common.networking.packets.C2SOpenMail;
+import com.createcivilization.capitol.common.networking.packets.C2SMailAction;
+import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
+import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
+import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -295,6 +302,48 @@ public class CapitolNetworking {
 			C2SCancelDisband.TYPE,
 			C2SCancelDisband.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleCancelDisband)
+		);
+
+		registrar.playToServer(
+			C2SSendMail.TYPE,
+			C2SSendMail.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleSendMail)
+		);
+
+		registrar.playToServer(
+			C2SRequestInbox.TYPE,
+			C2SRequestInbox.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRequestInbox)
+		);
+
+		registrar.playToServer(
+			C2SOpenMail.TYPE,
+			C2SOpenMail.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleOpenMail)
+		);
+
+		registrar.playToServer(
+			C2SMailAction.TYPE,
+			C2SMailAction.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleMailAction)
+		);
+
+		registrar.playToClient(
+			S2CInboxPage.TYPE,
+			S2CInboxPage.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::inboxPageHandler)
+		);
+
+		registrar.playToClient(
+			S2CMailBody.TYPE,
+			S2CMailBody.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::mailBodyHandler)
+		);
+
+		registrar.playToClient(
+			S2CMailUnread.TYPE,
+			S2CMailUnread.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::mailUnreadHandler)
 		);
 	}
 
