@@ -78,6 +78,23 @@ The `<team>` argument autocompletes to the names of teams that have invited the 
 
 ---
 
+## /capitol mail
+
+Send and read mail. All three commands drive the same `MailManager` calls used by the book GUI.
+
+| Command | Syntax                                        | Description                                                                             | Permission                                        |
+|---------|-----------------------------------------------|-----------------------------------------------------------------------------------------|---------------------------------------------------|
+| send    | `/capitol mail send team <subject> <body>`    | Mails the whole team.                                                                   | `SEND_MAIL_TEAM_WIDE`                             |
+| send    | `/capitol mail send role <role> ...`          | Mails everyone holding a mailable role.                                                 | `SEND_MAIL_ROLES`                                 |
+| send    | `/capitol mail send member <player> ...`      | Mails one member.                                                                       | `SEND_MAIL_MEMBERS`                               |
+| send    | `/capitol mail send external <team> ...`      | Mails a target team's `RECEIVE_EXTERNAL_MAIL` holders.                                  | `SEND_MAIL_EXTERNAL`                              |
+| inbox   | `/capitol mail inbox [page]`                  | Lists a page of the inbox (headers only).                                               | None                                              |
+| sent    | `/capitol mail sent [page]`                   | Lists a page of sent mail.                                                              | None                                              |
+| read    | `/capitol mail read <id>`                     | Prints a mail's body and clears its unread flag.                                        | None                                              |
+| delete  | `/capitol mail delete <id>`                   | Deletes a mail for you only.                                                            | None                                              |
+
+---
+
 ## Permissions
 
 Commands are gated by a bitfield permission system defined in `Permission.java`. Each team member has a role with a permission bitfield. The relevant permissions for commands are:
@@ -92,5 +109,11 @@ Commands are gated by a bitfield permission system defined in `Permission.java`.
 | `CLAIM_CHUNKS`     | Claim land for the team                                   |
 | `UNCLAIM_CHUNKS`   | Unclaim team land                                         |
 | `FORCELOAD_CHUNKS` | Manage forceloaded chunks                                 |
+| `DISBAND_TEAM`     | Start a team disband                                      |
+| `APPROVE_DISBAND`  | Approve or deny a pending disband                         |
+| `SEND_MAIL_MEMBERS` / `SEND_MAIL_ROLES` / `SEND_MAIL_TEAM_WIDE` / `SEND_MAIL_EXTERNAL` | Send mail to that kind of target |
+| `RECEIVE_EXTERNAL_MAIL` | Be a valid recipient of another team's mail          |
+| `ASSIGN_MAYORS`    | Set or clear a capitol block's mayor                      |
+| `MANAGE_SUB_CLAIMS_OTHERS` / `VIEW_ALL_SUB_CLAIMS` | Act on or view other members' sub-claims |
 
 See `Permission.java` for the full list of gameplay permissions (block interaction, containers, entities, etc.).
