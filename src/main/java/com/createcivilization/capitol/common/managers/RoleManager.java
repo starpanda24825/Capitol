@@ -250,6 +250,9 @@ public final class RoleManager {
 		if (!allowed.ok()) return allowed;
 		db().addMemberRole(target, team, role.id());
 		TeamLifecycleManager.onApproverSetChanged(team);
+		MailManager.sendSystemMail(target,
+			net.minecraft.network.chat.Component.translatable("commands.capitol.mail.system.role_assigned.subject").getString(),
+			net.minecraft.network.chat.Component.translatable("commands.capitol.mail.system.role_assigned.body", role.name()).getString());
 		return Check.allow();
 	}
 
@@ -258,6 +261,9 @@ public final class RoleManager {
 		if (!allowed.ok()) return allowed;
 		db().removeMemberRole(target, team, role.id());
 		TeamLifecycleManager.onApproverSetChanged(team);
+		MailManager.sendSystemMail(target,
+			net.minecraft.network.chat.Component.translatable("commands.capitol.mail.system.role_removed.subject").getString(),
+			net.minecraft.network.chat.Component.translatable("commands.capitol.mail.system.role_removed.body", role.name()).getString());
 		return Check.allow();
 	}
 

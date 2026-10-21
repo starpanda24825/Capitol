@@ -80,6 +80,9 @@ public final class TeamLifecycleManager {
 
 		syncCapitalMayor(team, newLeader);
 		cancelPendingDisband(team);
+		MailManager.sendSystemMail(newLeader,
+			Component.translatable("commands.capitol.mail.system.transfer.subject").getString(),
+			Component.translatable("commands.capitol.mail.system.transfer.body", team.getName()).getString());
 		return RoleManager.Check.allow();
 	}
 
@@ -104,6 +107,9 @@ public final class TeamLifecycleManager {
 			syncCapitalMayor(team, newLeader);
 			cancelPendingDisband(team);
 			onApproverSetChanged(team);
+			MailManager.sendSystemMail(newLeader,
+				Component.translatable("commands.capitol.mail.system.transfer.subject").getString(),
+				Component.translatable("commands.capitol.mail.system.transfer.body", team.getName()).getString());
 			return RoleManager.Check.allow();
 		}
 
@@ -149,6 +155,11 @@ public final class TeamLifecycleManager {
 		Set<UUID> approvers = getApprovers(team, requester.getUUID());
 		db().upsertDisbandRequest(team, requester.getUUID(), System.currentTimeMillis());
 		for (UUID approver : approvers) db().setDisbandApproval(team, approver, false);
+		for (UUID approver : approvers) {
+			MailManager.sendSystemMail(approver,
+				Component.translatable("commands.capitol.mail.system.disband.subject").getString(),
+				Component.translatable("commands.capitol.mail.system.disband.body", team.getName()).getString());
+		}
 
 		MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
 		if (server == null) return;

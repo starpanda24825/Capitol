@@ -5,6 +5,7 @@ import com.createcivilization.capitol.common.data.SubClaim;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimData;
+import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -22,6 +23,8 @@ public class SubClaimEvents {
 		if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
 		CapitolDatabase database = DatabaseManager.database;
+		// push the unread badge on login
+		PacketDistributor.sendToPlayer(player, new S2CMailUnread(database.countUnreadMail(player.getUUID())));
 		List<SubClaim> subClaims = database.getAllSubClaims();
 		for (SubClaim subClaim : subClaims) {
 			PacketDistributor.sendToPlayer(player, new S2CSubClaimData(

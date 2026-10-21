@@ -3,6 +3,7 @@ package com.createcivilization.capitol.server.invites;
 import com.createcivilization.capitol.common.config.CapitolConfig;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
+import com.createcivilization.capitol.common.managers.MailManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -45,6 +46,10 @@ public class InviteHandler {
 			.withStyle(s -> s.withColor(ChatFormatting.RED)
 				.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, denyCmd))
 				.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(denyCmd))));
+
+		MailManager.sendSystemMail(player.getUUID(),
+			Component.translatable("commands.capitol.mail.system.invite.subject").getString(),
+			Component.translatable("commands.capitol.mail.system.invite.body", team.getName()).getString());
 
 		player.sendSystemMessage(Component.literal("You have been invited to join ").withStyle(ChatFormatting.YELLOW)
 			.append(Component.literal(team.getName()).withStyle(ChatFormatting.GOLD))

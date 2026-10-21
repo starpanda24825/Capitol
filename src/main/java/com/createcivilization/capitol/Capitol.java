@@ -81,6 +81,10 @@ public class Capitol {
 	}
 
 	private void onServerStarted(ServerStartedEvent event) {
+		// purge old mail once per start; counts rebuild lazily
+		long cutoff = System.currentTimeMillis() - CapitolConfig.MAIL_RETENTION_DAYS.get() * 24L * 60L * 60L * 1000L;
+		DatabaseManager.database.purgeMailOlderThan(cutoff);
+
 		if (!CapitolConfig.FORCELOAD_ENABLED.get()) return;
 
 		List<ClaimedChunk> forceloaded = DatabaseManager.database.getAllForceloadedChunks();
