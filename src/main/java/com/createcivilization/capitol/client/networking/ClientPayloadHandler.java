@@ -15,6 +15,7 @@ import com.createcivilization.capitol.common.networking.packets.S2CSyncWars;
 import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
 import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
 import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
+import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
@@ -82,6 +83,10 @@ public class ClientPayloadHandler {
 
 	public static void mailUnreadHandler(final S2CMailUnread payload, final IPayloadContext context) {
 		ClientMailCache.setUnread(payload.count());
+	}
+
+	public static void subClaimsPageHandler(final S2CSubClaimsPage payload, final IPayloadContext context) {
+		ClientSubClaimCache.setPage(payload);
 	}
 
 	public static void bookInvalidateHandler(final S2CBookInvalidate payload, final IPayloadContext context) {
