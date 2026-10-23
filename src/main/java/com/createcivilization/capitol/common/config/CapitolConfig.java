@@ -24,6 +24,9 @@ public class CapitolConfig {
 	public static final ModConfigSpec.IntValue MAX_ROLES_PER_TEAM;
 	public static final ModConfigSpec.IntValue MAX_EXTRA_ROLES_PER_MEMBER;
 
+	// Sub-claims
+	public static final ModConfigSpec.IntValue MAX_SUB_CLAIMS_PER_PLAYER;
+
 	// Disband
 	public static final ModConfigSpec.IntValue DISBAND_APPROVAL_HOURS;
 	public static final ModConfigSpec.IntValue DISBAND_PROTECTION_LOCK_HOURS;
@@ -146,6 +149,14 @@ public class CapitolConfig {
 		MAX_EXTRA_ROLES_PER_MEMBER = builder
 			.comment("Maximum extra roles a member can hold on top of their base role. 0 = unlimited.")
 			.defineInRange("maxExtraRolesPerMember", 5, 0, Integer.MAX_VALUE);
+
+		builder.pop();
+
+		builder.comment("Sub-claim limits.").push("subclaims");
+
+		MAX_SUB_CLAIMS_PER_PLAYER = builder
+			.comment("Maximum sub-claims a player can own. 0 = unlimited.")
+			.defineInRange("maxSubClaimsPerPlayer", 0, 0, Integer.MAX_VALUE);
 
 		builder.pop();		builder.comment("Disband approval flow.").push("disband");
 

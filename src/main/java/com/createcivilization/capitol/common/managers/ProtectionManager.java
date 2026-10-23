@@ -422,9 +422,11 @@ public class ProtectionManager {
 		return getSubClaimAt(level, new BlockPos(pos.getMiddleBlockX(), 64, pos.getMiddleBlockZ()));
 	}
 
-	// sub-claim owner always has full access; everyone else uses the sub-claim bitfield
+	// sub-claim owner has full access; teammates use the sub-claim's member bits; outsiders are denied
 	private static Result resolveSubClaimPermission(Player player, Permission permission, SubClaim subClaim) {
 		if (player.getUUID().equals(subClaim.ownerUuid())) return Result.ALLOW;
+		Team team = database().getPlayerTeam(player);
+		if (team == null || !team.getId().equals(subClaim.teamId())) return Result.DENY;
 		return permission.hasPermission(subClaim.permissions()) ? Result.ALLOW : Result.DENY;
 	}
 

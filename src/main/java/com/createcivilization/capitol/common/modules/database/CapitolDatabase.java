@@ -556,25 +556,45 @@ public class CapitolDatabase extends Database {
 
 		for (SubClaim subClaim : getSubClaimsOwnedBy(departingPlayer)) {
 			if (!subClaim.teamId().equals(team.getId())) continue;
-			String newName = subClaim.name();
-			if (!takenNames.add(newName)) {
-				// name taken: append (1), (2), ... until one is free
-				int n = 1;
-				do {
-					newName = subClaim.name() + "(" + n + ")";
-					n++;
-				} while (!takenNames.add(newName));
-			}
-			updateSubClaimName(subClaim.id(), newName);
-			try (PreparedStatement ps = getConnection().prepareStatement(
-				"UPDATE sub_claims SET owner_uuid = ? WHERE id = ?")) {
-				ps.setString(1, leaderId.toString());
-				ps.setString(2, subClaim.id().toString());
-				ps.execute();
-			} catch (SQLException e) {
-				Capitol.LOGGER.error("Error while transferring sub-claim to team leader in database.", e);
-				throw new RuntimeException(e);
-			}
+			updateSubClaimName(subClaim.id(), uniqueSubClaimName(subClaim.name(), takenNames));
+			setSubClaimOwner(subClaim.id(), leaderId);
+		}
+	}
+
+	/**
+	 * Transfers a sub-claim to another player, renaming it to 'name' + (n) if the
+	 * new owner already owns one with the same name.
+	 */
+	public void transferSubClaim(UUID subClaimId, UUID newOwnerId) {
+		SubClaim subClaim = getSubClaim(subClaimId);
+		if (subClaim == null) return;
+		Set<String> takenNames = new HashSet<>();
+		for (SubClaim owned : getSubClaimsOwnedBy(newOwnerId)) takenNames.add(owned.name());
+		String newName = uniqueSubClaimName(subClaim.name(), takenNames);
+		if (!newName.equals(subClaim.name())) updateSubClaimName(subClaimId, newName);
+		setSubClaimOwner(subClaimId, newOwnerId);
+	}
+
+	// appends (1), (2), ... until the name is not in takenNames
+	private static String uniqueSubClaimName(String base, Set<String> takenNames) {
+		String name = base;
+		int n = 1;
+		while (!takenNames.add(name)) {
+			name = base + "(" + n + ")";
+			n++;
+		}
+		return name;
+	}
+
+	private void setSubClaimOwner(UUID subClaimId, UUID ownerId) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"UPDATE sub_claims SET owner_uuid = ? WHERE id = ?")) {
+			ps.setString(1, ownerId.toString());
+			ps.setString(2, subClaimId.toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while transferring sub-claim in database.", e);
+			throw new RuntimeException(e);
 		}
 	}
 
@@ -2516,6 +2536,72 @@ public class CapitolDatabase extends Database {
 		}
 	}
 
+	/**
+	 * One page of a team's sub-claims for the directory, optionally filtered to one
+	 * owner and/or a name fragment.
+	 *
+	 * @param team        the team to list for
+	 * @param page        0-based page index
+	 * @param size        rows per page
+	 * @param ownerFilter only sub-claims owned by this player (null = everyone)
+	 * @param nameQuery   case-insensitive name fragment (null/blank = any)
+	 */
+	public List<SubClaim> getTeamSubClaimsPage(Team team, int page, int size, @Nullable UUID ownerFilter, @Nullable String nameQuery) {
+		StringBuilder sql = new StringBuilder("SELECT * FROM sub_claims WHERE team_id = ?");
+		if (ownerFilter != null) sql.append(" AND owner_uuid = ?");
+		if (nameQuery != null && !nameQuery.isBlank()) sql.append(" AND name LIKE ? COLLATE NOCASE");
+		sql.append(" ORDER BY name LIMIT ? OFFSET ?");
+		try (PreparedStatement ps = getConnection().prepareStatement(sql.toString())) {
+			int index = 1;
+			ps.setString(index++, team.getId().toString());
+			if (ownerFilter != null) ps.setString(index++, ownerFilter.toString());
+			if (nameQuery != null && !nameQuery.isBlank()) ps.setString(index++, "%" + nameQuery + "%");
+			ps.setInt(index++, size);
+			ps.setInt(index, Math.max(0, page) * size);
+			try (ResultSet rs = ps.executeQuery()) {
+				List<SubClaim> subClaims = new ArrayList<>();
+				while (rs.next()) subClaims.add(SubClaim.fromResultSet(rs));
+				return subClaims;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting a page of team sub-claims from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	// Number of sub-claims a team owns, same filters as the directory page.
+	public int countTeamSubClaims(Team team, @Nullable UUID ownerFilter, @Nullable String nameQuery) {
+		StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM sub_claims WHERE team_id = ?");
+		if (ownerFilter != null) sql.append(" AND owner_uuid = ?");
+		if (nameQuery != null && !nameQuery.isBlank()) sql.append(" AND name LIKE ? COLLATE NOCASE");
+		try (PreparedStatement ps = getConnection().prepareStatement(sql.toString())) {
+			int index = 1;
+			ps.setString(index++, team.getId().toString());
+			if (ownerFilter != null) ps.setString(index++, ownerFilter.toString());
+			if (nameQuery != null && !nameQuery.isBlank()) ps.setString(index++, "%" + nameQuery + "%");
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while counting team sub-claims in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	//Number of sub-claims a player owns.
+	public int countSubClaimsOwnedBy(UUID playerUuid) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT COUNT(*) FROM sub_claims WHERE owner_uuid = ?")) {
+			ps.setString(1, playerUuid.toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while counting sub-claims owned by player in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
 	// all sub-claims owned by a player
 	public List<SubClaim> getSubClaimsOwnedBy(UUID playerUuid) {
 		try (PreparedStatement ps = getConnection().prepareStatement(
@@ -2556,6 +2642,19 @@ public class CapitolDatabase extends Database {
 			ps.execute();
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error while setting sub-claim permissions in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	// overwrite the sub-claim's protection bitfield
+	public void setSubClaimProtections(UUID subClaimId, long protections) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"UPDATE sub_claims SET protections = ? WHERE id = ?")) {
+			ps.setLong(1, protections);
+			ps.setString(2, subClaimId.toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while setting sub-claim protections in database.", e);
 			throw new RuntimeException(e);
 		}
 	}

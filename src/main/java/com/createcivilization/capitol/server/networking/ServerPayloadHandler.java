@@ -8,6 +8,7 @@ import com.createcivilization.capitol.common.data.CapitolTier;
 import com.createcivilization.capitol.common.data.Permission;
 import com.createcivilization.capitol.common.data.SubClaim;
 import com.createcivilization.capitol.common.data.SubClaimProtection;
+import com.createcivilization.capitol.common.data.SubClaimSummary;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamMember;
 import com.createcivilization.capitol.common.data.TeamRole;
@@ -16,6 +17,7 @@ import com.createcivilization.capitol.common.data.MailTargetKind;
 import com.createcivilization.capitol.common.managers.DatabaseManager;
 import com.createcivilization.capitol.common.managers.MailManager;
 import com.createcivilization.capitol.common.managers.RoleManager;
+import com.createcivilization.capitol.common.managers.SubClaimManager;
 import com.createcivilization.capitol.common.managers.TeamLifecycleManager;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
@@ -32,6 +34,13 @@ import com.createcivilization.capitol.common.networking.packets.C2SRequestDisban
 import com.createcivilization.capitol.common.networking.packets.C2SRespondDisband;
 import com.createcivilization.capitol.common.networking.packets.C2SCancelDisband;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2STransferSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SRenameSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimPermissions;
+import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimProtections;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
+import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
 import com.createcivilization.capitol.common.networking.packets.C2SInvitePlayer;
@@ -284,8 +293,10 @@ public class ServerPayloadHandler {
 			Team team = database.getPlayerTeam(player);
 			if (team == null) return;
 
-			if (!Permission.CLAIM_SUB_CLAIMS.hasPermission(database.getPlayerPermission(player, team))) {
-				player.displayClientMessage(Component.literal("You do not have permission to create sub-claims").withStyle(ChatFormatting.RED), false);
+			// permission + per-player cap both live in SubClaimManager
+			RoleManager.Check created = SubClaimManager.canCreate(player, team);
+			if (!created.ok()) {
+				player.displayClientMessage(Component.translatable(created.langKey(), created.args()).withStyle(ChatFormatting.RED), false);
 				return;
 			}
 
@@ -353,7 +364,8 @@ public class ServerPayloadHandler {
 				minX, minY, minZ,
 				maxX, maxY, maxZ,
 				player.getUUID(),
-				Permission.of(Permission.values()),
+				// members start with the default member permissions
+				TeamRole.memberPermissions(),
 				SubClaimProtection.configDefaults()
 			);
 
@@ -957,6 +969,87 @@ public class ServerPayloadHandler {
 	private static void pushUnread(Player player) {
 		PacketDistributor.sendToPlayer((ServerPlayer) player,
 			new S2CMailUnread(DatabaseManager.database.countUnreadMail(player.getUUID())));
+	}
+
+	//sub-claim ownership / directory
+
+	public static void handleTransferSubClaim(final C2STransferSubClaim request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		SubClaim subClaim = DatabaseManager.database.getSubClaim(request.id());
+		sendAction(player, SubClaimManager.transfer(player, team, subClaim, request.newOwner()));
+	}
+
+	public static void handleDeleteSubClaim(final C2SDeleteSubClaim request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		SubClaim subClaim = DatabaseManager.database.getSubClaim(request.id());
+		sendAction(player, SubClaimManager.delete(player, team, subClaim));
+	}
+
+	public static void handleRenameSubClaim(final C2SRenameSubClaim request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		SubClaim subClaim = DatabaseManager.database.getSubClaim(request.id());
+		sendAction(player, SubClaimManager.rename(player, team, subClaim, request.name()));
+	}
+
+	public static void handleSetSubClaimPermissions(final C2SSetSubClaimPermissions request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		SubClaim subClaim = DatabaseManager.database.getSubClaim(request.id());
+		sendAction(player, SubClaimManager.setPermissions(player, team, subClaim, request.permissions()));
+	}
+
+	public static void handleSetSubClaimProtections(final C2SSetSubClaimProtections request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		SubClaim subClaim = DatabaseManager.database.getSubClaim(request.id());
+		sendAction(player, SubClaimManager.setProtections(player, team, subClaim, request.protections()));
+	}
+
+	public static void handleRequestSubClaims(final C2SRequestSubClaims request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		UUID ownerFilter = parseUuid(request.ownerFilter());
+		List<SubClaimSummary> rows = SubClaimManager.buildPage(player, team, request.page(), request.all(), ownerFilter, request.query());
+		int total = SubClaimManager.count(player, team, request.all(), ownerFilter, request.query());
+		PacketDistributor.sendToPlayer((ServerPlayer) player,
+			new S2CSubClaimsPage(Math.max(0, request.page()), total, request.all(), rows));
+	}
+
+	@Nullable
+	private static UUID parseUuid(String raw) {
+		if (raw == null || raw.isBlank()) return null;
+		try {
+			return UUID.fromString(raw);
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
 	}
 
 	// the GUI shows failures as a toast; successes are silent

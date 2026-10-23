@@ -42,6 +42,13 @@ import com.createcivilization.capitol.common.networking.packets.C2SMailAction;
 import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
 import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
 import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
+import com.createcivilization.capitol.common.networking.packets.C2STransferSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SRenameSubClaim;
+import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimPermissions;
+import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimProtections;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
+import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -344,6 +351,48 @@ public class CapitolNetworking {
 			S2CMailUnread.TYPE,
 			S2CMailUnread.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ClientPayloadHandler::mailUnreadHandler)
+		);
+
+		registrar.playToServer(
+			C2STransferSubClaim.TYPE,
+			C2STransferSubClaim.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleTransferSubClaim)
+		);
+
+		registrar.playToServer(
+			C2SDeleteSubClaim.TYPE,
+			C2SDeleteSubClaim.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleDeleteSubClaim)
+		);
+
+		registrar.playToServer(
+			C2SRenameSubClaim.TYPE,
+			C2SRenameSubClaim.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRenameSubClaim)
+		);
+
+		registrar.playToServer(
+			C2SSetSubClaimPermissions.TYPE,
+			C2SSetSubClaimPermissions.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleSetSubClaimPermissions)
+		);
+
+		registrar.playToServer(
+			C2SSetSubClaimProtections.TYPE,
+			C2SSetSubClaimProtections.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleSetSubClaimProtections)
+		);
+
+		registrar.playToServer(
+			C2SRequestSubClaims.TYPE,
+			C2SRequestSubClaims.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRequestSubClaims)
+		);
+
+		registrar.playToClient(
+			S2CSubClaimsPage.TYPE,
+			S2CSubClaimsPage.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::subClaimsPageHandler)
 		);
 	}
 
