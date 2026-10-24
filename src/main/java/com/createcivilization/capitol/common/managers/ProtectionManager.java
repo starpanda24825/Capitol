@@ -7,6 +7,7 @@ import com.createcivilization.capitol.common.data.SubClaim;
 import com.createcivilization.capitol.common.data.SubClaimProtection;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.data.TeamProtection;
+import com.createcivilization.capitol.common.data.TeamRole;
 import com.createcivilization.capitol.common.modules.database.CapitolDatabase;
 import dev.ryanhcode.sable.companion.SubLevelAccess;
 import net.minecraft.core.BlockPos;
@@ -89,7 +90,7 @@ public class ProtectionManager {
 
 		if (exceptions != null && exceptions.matchesBlock(block)) return Result.ALLOW;
 
-		return resolvePermission(player, permission, team);
+		return resolvePermission(player, permission, team, pos, level);
 	}
 
 	/**
@@ -187,7 +188,7 @@ public class ProtectionManager {
 
 		if (itemUseExceptions.matchesItem(item)) return Result.ALLOW;
 
-		return resolvePermission(player, Permission.USE_ITEMS, team);
+		return resolvePermission(player, Permission.USE_ITEMS, team, pos, level);
 	}
 
 	/**
@@ -211,7 +212,7 @@ public class ProtectionManager {
 
 		if (!isEntityProtected(target)) return Result.ALLOW;
 
-		return resolvePermission(player, permission, team);
+		return resolvePermission(player, permission, team, pos, level);
 	}
 
 	/**
@@ -232,7 +233,7 @@ public class ProtectionManager {
 
 		if (player instanceof FakePlayer) return resolveFakePlayer(player, level, team);
 
-		return resolvePermission(player, permission, team);
+		return resolvePermission(player, permission, team, pos, level);
 	}
 
 	/**
@@ -435,12 +436,25 @@ public class ProtectionManager {
 	 * Individual overrides take priority over role-based permissions.
 	 */
 	private static Result resolvePermission(Player player, Permission permission, Team team) {
+		return resolvePermission(player, permission, team, null, null);
+	}
+
+	// Same as above, but also lets a capitol block's mayor use the team's scoped mayor role inside the chunks that block controls.
+	private static Result resolvePermission(Player player, Permission permission, Team team,
+										   @Nullable ChunkPos pos, @Nullable Level level) {
 		// TODO: ally team permission check goes here
 
 		long perms = database().getPlayerPermission(player, team);
 		Long individual = database().getIndividualPermissions(player, team);
 		if (individual != null) perms = perms | individual;
-		return permission.hasPermission(perms) ? Result.ALLOW : Result.DENY;
+		if (permission.hasPermission(perms)) return Result.ALLOW;
+
+		if (pos != null && level != null && database().getMayorBlockAt(player.getUUID(), pos, level, team) != null) {
+			TeamRole mayorRole = database().getMayorRole(team);
+			if (mayorRole != null && permission.hasPermission(mayorRole.permissions() & RoleRules.MAYOR_ALLOWED_MASK))
+				return Result.ALLOW;
+		}
+		return Result.DENY;
 	}
 
 	/**

@@ -27,6 +27,9 @@ public class CapitolConfig {
 	// Sub-claims
 	public static final ModConfigSpec.IntValue MAX_SUB_CLAIMS_PER_PLAYER;
 
+	// Mayors
+	public static final ModConfigSpec.BooleanValue ENFORCE_CAPITOL_TIER_CLAIM_LIMITS;
+
 	// Disband
 	public static final ModConfigSpec.IntValue DISBAND_APPROVAL_HOURS;
 	public static final ModConfigSpec.IntValue DISBAND_PROTECTION_LOCK_HOURS;
@@ -157,6 +160,14 @@ public class CapitolConfig {
 		MAX_SUB_CLAIMS_PER_PLAYER = builder
 			.comment("Maximum sub-claims a player can own. 0 = unlimited.")
 			.defineInRange("maxSubClaimsPerPlayer", 0, 0, Integer.MAX_VALUE);
+
+		builder.pop();
+
+		builder.comment("Mayor settings.").push("mayors");
+
+		ENFORCE_CAPITOL_TIER_CLAIM_LIMITS = builder
+			.comment("Cap the chunks a capitol block controls at its tier's maxClaims.")
+			.define("enforceCapitolTierClaimLimits", false);
 
 		builder.pop();		builder.comment("Disband approval flow.").push("disband");
 

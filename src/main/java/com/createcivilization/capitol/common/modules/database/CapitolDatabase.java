@@ -24,9 +24,12 @@ public class CapitolDatabase extends Database {
 	private final ConcurrentHashMap<UUID, Map<UUID, Long>> playerPermCache = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<UUID, Map<UUID, Optional<Long>>> individualPermCache = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<UUID, Integer> unreadMailCache = new ConcurrentHashMap<>();
+	// capitol blocks each player runs, so mayor checks never hit SQL
+	private final ConcurrentHashMap<UUID, List<CapitolBlockData>> mayorBlocksCache = new ConcurrentHashMap<>();
 
 	public void clearCache() {
 		chunkOwnerCache.clear();
+		mayorBlocksCache.clear();
 		subLevelOwnerCache.clear();
 		teamPermissionsCache.clear();
 		playerPermCache.clear();
@@ -535,6 +538,24 @@ public class CapitolDatabase extends Database {
 		// otherwise a rejoin would silently keep their old individual overrides
 		removeIndividualPermissions(playerUUID, team);
 		transferSubClaimsOnLeave(playerUUID, team);
+		resetMayoralBlocks(team, playerUUID);
+	}
+
+	// a leaving/kicked mayor's blocks fall back to the team leader
+	private void resetMayoralBlocks(Team team, UUID playerUUID) {
+		UUID leaderId = getTeamLeader(team);
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"UPDATE capitol_blocks SET mayor_uuid = ? WHERE team_id = ? AND mayor_uuid = ?")) {
+			if (leaderId == null) ps.setNull(1, java.sql.Types.VARCHAR);
+			else ps.setString(1, leaderId.toString());
+			ps.setString(2, team.getId().toString());
+			ps.setString(3, playerUUID.toString());
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while resetting mayoral capitol blocks in database.", e);
+			throw new RuntimeException(e);
+		}
+		mayorBlocksCache.clear();
 	}
 
 	/**
@@ -1201,8 +1222,60 @@ public class CapitolDatabase extends Database {
 		}
 	}
 
+	// capitol blocks a player is the mayor of (cached; invalidation on any mayor change)
+	public List<CapitolBlockData> getMayorBlocks(UUID playerUuid) {
+		return mayorBlocksCache.computeIfAbsent(playerUuid, uuid -> {
+			try (PreparedStatement ps = getConnection().prepareStatement(
+					"SELECT id, team_id, dimension, x, y, z, is_capital, tier, name, mayor_uuid FROM capitol_blocks " +
+						"WHERE mayor_uuid = ?")) {
+				ps.setString(1, uuid.toString());
+				try (ResultSet rs = ps.executeQuery()) {
+					List<CapitolBlockData> blocks = new ArrayList<>();
+					while (rs.next()) blocks.add(CapitolBlockData.fromResultSet(rs));
+					return blocks;
+				}
+			} catch (SQLException e) {
+				Capitol.LOGGER.error("Error while getting a player's mayoral blocks from database.", e);
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	/*
+	 * The capitol block whose claim area contains {@code chunkPos} and whose mayor is
+	 * {@code playerUuid}, or null. Uses the cached mayoral-block list, no SQL on the
+	 * hot path beyond the first lookup.
+	 */
+	@Nullable
+	public Long getMayorBlockAt(UUID playerUuid, ChunkPos chunkPos, Level level, Team team) {
+		String dim = level.dimension().location().toString();
+		for (CapitolBlockData block : getMayorBlocks(playerUuid)) {
+			if (!block.dimension().equals(dim)) continue;
+			if (!block.teamId().equals(team.getId())) continue;
+			ChunkPos blockChunk = new ChunkPos(block.pos());
+			int radius = block.claimRadius();
+			if (Math.abs(blockChunk.x - chunkPos.x) <= radius && Math.abs(blockChunk.z - chunkPos.z) <= radius) {
+				return block.id();
+			}
+		}
+		return null;
+	}
+
+	// The team's scoped mayor role, or null if it somehow has none.
+	@Nullable
+	public TeamRole getMayorRole(Team team) {
+		return getRoleByName(team, TeamRole.MAYOR_ROLE_NAME);
+	}
+
+	// Drops every cache entry for {@code playerUuid}'s mayoral blocks.
+	public void invalidateMayorCache(UUID playerUuid) {
+		mayorBlocksCache.remove(playerUuid);
+	}
+
 	// sets who runs a block (mayor). pass null to clear.
 	public void setCapitolBlockMayor(long capitolBlockId, @Nullable UUID mayorUuid) {
+		// the old and new mayor's cached block lists are both stale now
+		mayorBlocksCache.clear();
 		try (PreparedStatement ps = getConnection().prepareStatement(
 			"UPDATE capitol_blocks SET mayor_uuid = ? WHERE id = ?")) {
 			if (mayorUuid == null) {
@@ -1610,6 +1683,8 @@ public class CapitolDatabase extends Database {
 		if (wasCapital) {
 			setCapitolPos(team, null, null);
 		}
+		// the block's mayor list is stale now
+		mayorBlocksCache.clear();
 	}
 
 	/**
@@ -1662,6 +1737,21 @@ public class CapitolDatabase extends Database {
 			}
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error looking up capitol block by position", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	// one capitol block by its row id, or null
+	@Nullable
+	public CapitolBlockData getCapitolBlockById(long capitolBlockId) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT id, team_id, dimension, x, y, z, is_capital, tier, name, mayor_uuid FROM capitol_blocks WHERE id = ?")) {
+			ps.setLong(1, capitolBlockId);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? CapitolBlockData.fromResultSet(rs) : null;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error looking up capitol block by id " + capitolBlockId, e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -1726,6 +1816,21 @@ public class CapitolDatabase extends Database {
 			}
 		} catch (SQLException e) {
 			Capitol.LOGGER.error("Error looking up capitol block id for chunk", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	// Number of chunks a capitol block currently controls in one dimension.
+	public int countChunksForCapitolBlock(long capitolBlockId, String dimension) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT COUNT(*) FROM chunks WHERE capitol_block_id = ? AND dimension = ?")) {
+			ps.setLong(1, capitolBlockId);
+			ps.setString(2, dimension);
+			try (ResultSet rs = ps.executeQuery()) {
+				return rs.next() ? rs.getInt(1) : 0;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error counting chunks of capitol block " + capitolBlockId, e);
 			throw new RuntimeException(e);
 		}
 	}
