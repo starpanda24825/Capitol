@@ -65,6 +65,20 @@ Manages the player's own [sub-claims](subclaims.md). All subcommands except `lis
 | protection | `/capitol subclaim protection <id> <prot>`    | Toggles one `SubClaimProtection` on your sub-claim (suggestions provided). | None (owner)  |
 | delete     | `/capitol subclaim delete <id>`               | Deletes your sub-claim and broadcasts its removal to clients.            | None (owner) or `MANAGE_TEAM` |
 
+Sub-claims carve protected regions out of a team's claimed chunks. Ownership rules live in `SubClaimManager`.
+
+| Command    | Syntax                                        | Description                                                                                               | Permission      |
+|------------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------|
+| list       | `/capitol subclaim list [all]`                | Lists your sub-claims; `all` lists the team's (only with `VIEW_ALL_SUB_CLAIMS`, otherwise scoped to you). | None/`VIEW_ALL_SUB_CLAIMS`|
+| transfer   | `/capitol subclaim transfer <id> <player>`    | Transfers one of your sub-claims to another team member (renamed on a name collision).                    | Owner / `MANAGE_SUB_CLAIMS_OTHERS`|
+| rename     | `/capitol subclaim rename <id> <name>`        | Renames a sub-claim (unique per owner, 32 chars max).                                                     | Owner / `MANAGE_SUB_CLAIMS_OTHERS`|
+| permission | `/capitol subclaim permission <id> <perm>`    | Toggles a member permission bit for the sub-claim.                                                        | Owner / `MANAGE_SUB_CLAIMS_OTHERS`|
+| protection | `/capitol subclaim protection <id> <key>`     | Toggles a protection bit for the sub-claim.                                                               | Owner / `MANAGE_SUB_CLAIMS_OTHERS`|
+| delete     | `/capitol subclaim delete <id>`               | Deletes a sub-claim and pushes the removal to clients.                                                    | Owner / `MANAGE_SUB_CLAIMS_OTHERS`|
+
+The `<id>` argument is the sub-claim's UUID from `list`. Sub-claim owners can always manage their own;
+the team owner and ops can manage any in their team.
+
 ---
 
 ## /capitol invites
@@ -82,16 +96,16 @@ The `<team>` argument autocompletes to the names of teams that have invited the 
 
 Send and read mail. All three commands drive the same `MailManager` calls used by the book GUI.
 
-| Command | Syntax                                        | Description                                                                             | Permission                                        |
-|---------|-----------------------------------------------|-----------------------------------------------------------------------------------------|---------------------------------------------------|
-| send    | `/capitol mail send team <subject> <body>`    | Mails the whole team.                                                                   | `SEND_MAIL_TEAM_WIDE`                             |
-| send    | `/capitol mail send role <role> ...`          | Mails everyone holding a mailable role.                                                 | `SEND_MAIL_ROLES`                                 |
-| send    | `/capitol mail send member <player> ...`      | Mails one member.                                                                       | `SEND_MAIL_MEMBERS`                               |
-| send    | `/capitol mail send external <team> ...`      | Mails a target team's `RECEIVE_EXTERNAL_MAIL` holders.                                  | `SEND_MAIL_EXTERNAL`                              |
-| inbox   | `/capitol mail inbox [page]`                  | Lists a page of the inbox (headers only).                                               | None                                              |
-| sent    | `/capitol mail sent [page]`                   | Lists a page of sent mail.                                                              | None                                              |
-| read    | `/capitol mail read <id>`                     | Prints a mail's body and clears its unread flag.                                        | None                                              |
-| delete  | `/capitol mail delete <id>`                   | Deletes a mail for you only.                                                            | None                                              |
+| Command | Syntax                                        | Description                                             | Permission                    |
+|---------|-----------------------------------------------|---------------------------------------------------------|-------------------------------|
+| send    | `/capitol mail send team <subject> <body>`    | Mails the whole team.                                   | `SEND_MAIL_TEAM_WIDE`         |
+| send    | `/capitol mail send role <role> ...`          | Mails everyone holding a mailable role.                 | `SEND_MAIL_ROLES`             |
+| send    | `/capitol mail send member <player> ...`      | Mails one member.                                       | `SEND_MAIL_MEMBERS`           |
+| send    | `/capitol mail send external <team> ...`      | Mails a target team's `RECEIVE_EXTERNAL_MAIL` holders.  | `SEND_MAIL_EXTERNAL`          |
+| inbox   | `/capitol mail inbox [page]`                  | Lists a page of the inbox (headers only).               | None                          |
+| sent    | `/capitol mail sent [page]`                   | Lists a page of sent mail.                              | None                          |
+| read    | `/capitol mail read <id>`                     | Prints a mail's body and clears its unread flag.        | None                          |
+| delete  | `/capitol mail delete <id>`                   | Deletes a mail for you only.                            | None                          |
 
 ---
 
@@ -111,9 +125,9 @@ Commands are gated by a bitfield permission system defined in `Permission.java`.
 | `FORCELOAD_CHUNKS` | Manage forceloaded chunks                                 |
 | `DISBAND_TEAM`     | Start a team disband                                      |
 | `APPROVE_DISBAND`  | Approve or deny a pending disband                         |
-| `SEND_MAIL_MEMBERS` / `SEND_MAIL_ROLES` / `SEND_MAIL_TEAM_WIDE` / `SEND_MAIL_EXTERNAL` | Send mail to that kind of target |
-| `RECEIVE_EXTERNAL_MAIL` | Be a valid recipient of another team's mail          |
+| `SEND_MAIL_MEMBERS`/`SEND_MAIL_ROLES`/`SEND_MAIL_TEAM_WIDE`/`SEND_MAIL_EXTERNAL`| Send mail to that kind of target |
+| `RECEIVE_EXTERNAL_MAIL`| Be a valid recipient of another team's mail           |
 | `ASSIGN_MAYORS`    | Set or clear a capitol block's mayor                      |
-| `MANAGE_SUB_CLAIMS_OTHERS` / `VIEW_ALL_SUB_CLAIMS` | Act on or view other members' sub-claims |
+| `MANAGE_SUB_CLAIMS_OTHERS`/`VIEW_ALL_SUB_CLAIMS` | Act on or view other members' sub-claims |
 
 See `Permission.java` for the full list of gameplay permissions (block interaction, containers, entities, etc.).
