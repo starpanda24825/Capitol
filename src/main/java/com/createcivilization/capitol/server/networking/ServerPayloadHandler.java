@@ -81,6 +81,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.Nullable;
@@ -117,6 +118,29 @@ public class ServerPayloadHandler {
 		PacketDistributor.sendToPlayersTrackingChunk((ServerLevel) context.player().level(), chunkPos, packet);
 	}
 
+	private static String blockName(CapitolBlockData data) {
+		return data.name() == null ? ("block #" + data.id()) : data.name();
+	}
+
+	// true when any requested chunk sits inside a block this player runs
+	private static boolean isMayorOfAny(Player player, Team team, long[] packedChunks) {
+		CapitolDatabase database = DatabaseManager.database;
+		for (long packed : packedChunks) {
+			if (database.getMayorBlockAt(player.getUUID(), new ChunkPos(packed), player.level(), team) != null) return true;
+		}
+		return false;
+	}
+
+	// optional per-tier cap; off unless enforceCapitolTierClaimLimits is enabled
+	private static boolean tierCapReached(CapitolDatabase database, long capitolBlockId, Level level) {
+		if (!CapitolConfig.ENFORCE_CAPITOL_TIER_CLAIM_LIMITS.get()) return false;
+		CapitolBlockData data = database.getCapitolBlockById(capitolBlockId);
+		if (data == null || data.tier() == null) return false;
+		int max = data.tier().maxClaims();
+		if (max <= 0) return false;
+		return database.countChunksForCapitolBlock(capitolBlockId, level.dimension().location().toString()) >= max;
+	}
+
 	private static boolean isOutsideClaimRadius(Player player, ChunkPos targetChunk) {
 		int claimRadius = CapitolConfig.CLAIM_RADIUS.get();
 		if (claimRadius <= 0) return false;
@@ -135,8 +159,10 @@ public class ServerPayloadHandler {
 			return;
 		}
 
-		if (!Permission.CLAIM_CHUNKS.hasPermission(database.getPlayerPermission(player, team))) {
-			player.displayClientMessage(Component.literal("You do not have permission to claim chunks").withStyle(ChatFormatting.RED), false);
+		boolean globalClaim = Permission.CLAIM_CHUNKS.hasPermission(database.getPlayerPermission(player, team));
+		// a mayor may still claim inside their own block's area
+		if (!globalClaim && !isMayorOfAny(player, team, request.packedChunkPositions())) {
+			player.displayClientMessage(Component.translatable("commands.capitol.claim.no_permission").withStyle(ChatFormatting.RED), false);
 			return;
 		}
 
@@ -205,6 +231,14 @@ public class ServerPayloadHandler {
 			ChunkPos chunkPos = new ChunkPos(packedPos);
 			if (isOutsideClaimRadius(player, chunkPos)) continue;
 
+			// a mayor-claimed chunk belongs to their block
+			Long mayorBlock = null;
+			if (!globalClaim) {
+				mayorBlock = database.getMayorBlockAt(player.getUUID(), chunkPos, player.level(), team);
+				if (mayorBlock == null) continue;
+				if (tierCapReached(database, mayorBlock, player.level())) continue;
+			}
+
 			Team existingOwner = database.getChunkOwner(chunkPos, player.level());
 			if (existingOwner != null) continue;
 
@@ -213,8 +247,8 @@ public class ServerPayloadHandler {
 				continue;
 			}
 
-			database.claimChunk(team, chunkPos, player.level());
-			S2CChunkData packet = new S2CChunkData(chunkPos.toLong(), team, Optional.empty());
+			database.claimChunk(team, chunkPos, player.level(), mayorBlock);
+			S2CChunkData packet = new S2CChunkData(chunkPos.toLong(), team, Optional.ofNullable(mayorBlock));
 			PacketDistributor.sendToPlayersTrackingChunk((ServerLevel) player.level(), chunkPos, packet);
 			claimed++;
 		}
@@ -239,10 +273,7 @@ public class ServerPayloadHandler {
 			return;
 		}
 
-		if (!Permission.UNCLAIM_CHUNKS.hasPermission(database.getPlayerPermission(player, team))) {
-			player.displayClientMessage(Component.literal("You do not have permission to unclaim chunks").withStyle(ChatFormatting.RED), false);
-			return;
-		}
+		boolean globalUnclaim = Permission.UNCLAIM_CHUNKS.hasPermission(database.getPlayerPermission(player, team));
 
 		int unclaimed = 0;
 		// de-duplicated across chunks: one sub-claim can touch several unclaimed chunks
@@ -255,6 +286,11 @@ public class ServerPayloadHandler {
 			Team existingOwner = database.getChunkOwner(chunkPos, player.level());
 			if (existingOwner == null) continue;
 			if (!existingOwner.getId().equals(team.getId())) continue;
+
+			// without the global permission a mayor may only unclaim their own block's chunks
+			if (!globalUnclaim && database.getMayorBlockAt(player.getUUID(), chunkPos, player.level(), team) == null) {
+				continue;
+			}
 
 			for (SubClaim subClaim : database.unclaimChunk(team, chunkPos, player.level())) {
 				removedSubClaims.putIfAbsent(subClaim.id(), subClaim);
@@ -550,8 +586,8 @@ public class ServerPayloadHandler {
 			player.displayClientMessage(Component.literal("The Capital's mayor is always the team leader").withStyle(ChatFormatting.RED), false);
 			return;
 		}
-		if (!Permission.MANAGE_CAPITOL_BLOCKS.hasPermission(database.getPlayerPermission(player, team))) {
-			player.displayClientMessage(Component.literal("You do not have permission to assign mayors").withStyle(ChatFormatting.RED), false);
+		if (!Permission.ASSIGN_MAYORS.hasPermission(database.getPlayerPermission(player, team))) {
+			player.displayClientMessage(Component.translatable("commands.capitol.capitol_block.no_assign_mayors").withStyle(ChatFormatting.RED), false);
 			return;
 		}
 
@@ -563,6 +599,11 @@ public class ServerPayloadHandler {
 		}
 
 		database.setCapitolBlockMayor(data.id(), request.mayorUuid());
+		if (request.mayorUuid() != null) {
+			MailManager.sendSystemMail(request.mayorUuid(),
+				Component.translatable("commands.capitol.mail.system.mayor.subject").getString(),
+				Component.translatable("commands.capitol.mail.system.mayor.body", blockName(data)).getString());
+		}
 		player.displayClientMessage(Component.literal("Mayor assigned").withStyle(ChatFormatting.GREEN), false);
 
 		// reopen the book so the new mayor shows
@@ -1069,12 +1110,16 @@ public class ServerPayloadHandler {
 			&& data.tier().upgraded() != null
 			&& Permission.MANAGE_CAPITOL_BLOCKS.hasPermission(perms);
 		boolean canAssignMayor = !data.capital()
-			&& Permission.MANAGE_CAPITOL_BLOCKS.hasPermission(perms);
+			&& Permission.ASSIGN_MAYORS.hasPermission(perms);
 
 		List<CapitolMember> members = new ArrayList<>();
 		for (TeamMember member : database.getTeamMembers(team)) {
 			members.add(new CapitolMember(member.playerUUID(), playerName(player, member.playerUUID())));
 		}
+
+		int claimsUsed = database.countChunksForCapitolBlock(data.id(), data.dimension());
+		int claimsMax = data.tier() == null ? 0 : data.tier().maxClaims();
+		boolean isMayor = player.getUUID().equals(data.mayorUuid());
 
 		return new S2COpenCapitolScreen(
 			team,
@@ -1086,7 +1131,10 @@ public class ServerPayloadHandler {
 			data.mayorUuid() == null ? null : playerName(player, data.mayorUuid()),
 			members,
 			canAssignMayor,
-			perms
+			perms,
+			claimsUsed,
+			claimsMax,
+			isMayor
 		);
 	}
 

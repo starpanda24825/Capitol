@@ -127,6 +127,7 @@
 	"commands.capitol.mail.system.role_removed.body": "You lost the role %s.",
 	"commands.capitol.mail.system.mayor.subject": "Mayor assigned",
 	"commands.capitol.mail.system.mayor.body": "You are now the mayor of %s.",
+	"commands.capitol.capitol_block.no_assign_mayors": "You do not have permission to assign mayors.",
 	"commands.capitol.mail.system.subclaim.subject": "Sub-claim notice",
 	"commands.capitol.mail.system.subclaim.body": "%s was transferred to you.",
 	"commands.capitol.mail.system.subclaim.renamed": "Your sub-claim %s was renamed to %s.",

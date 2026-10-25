@@ -29,6 +29,14 @@ public class CapitolBlockPage extends Page {
 		CapitolBookMenu.addTableEntry(this, Component.literal("Type:"), Component.literal(type), 28);
 		CapitolBookMenu.addTableEntry(this, Component.literal("Mayor:"), Component.literal(mayor), 42);
 
+		String claims = payload.claimsMax() > 0
+			? payload.claimsUsed() + " / " + payload.claimsMax()
+			: String.valueOf(payload.claimsUsed());
+		CapitolBookMenu.addTableEntry(this, Component.literal("Claims:"), Component.literal(claims), 56);
+		if (payload.isMayor()) {
+			addInteractable(note("You may run this block's chunks", 104));
+		}
+
 		CapitolTier next = payload.tier() == null ? null : payload.tier().upgraded();
 		if (payload.canUpgrade() && next != null) {
 			addInteractable(new CapitolBookMenu.Button(20, 70, Component.literal("Upgrade to " + niceName(next)), () ->
@@ -44,7 +52,7 @@ public class CapitolBlockPage extends Page {
 
 		// pick a mayor from the team (Capital is always run by the team leader)
 		if (payload.canAssignMayor()) {
-			int y = 104;
+			int y = 118;
 			for (CapitolMember member : payload.members()) {
 				addInteractable(new CapitolBookMenu.Button(20, y, Component.literal(member.name()), () ->
 					PacketDistributor.sendToServer(new C2SSetCapitolBlockMayor(payload.capitolPos(), member.uuid()))
@@ -52,7 +60,7 @@ public class CapitolBlockPage extends Page {
 				y += 13;
 			}
 		} else if (payload.isCapital()) {
-			addInteractable(note("Mayor is always the team leader", 104));
+			addInteractable(note("Mayor is always the team leader", 118));
 		}
 	}
 

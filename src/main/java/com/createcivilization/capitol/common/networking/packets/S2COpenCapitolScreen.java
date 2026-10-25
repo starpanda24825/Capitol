@@ -18,7 +18,8 @@ public record S2COpenCapitolScreen(Team team, BlockPos capitolPos, boolean isCap
 								   @Nullable CapitolTier tier, boolean canUpgrade,
 								   @Nullable String blockName, @Nullable String mayorName,
 								   List<CapitolMember> members, boolean canAssignMayor,
-								   long playerPermissions) implements CustomPacketPayload {
+								   long playerPermissions, int claimsUsed, int claimsMax,
+								   boolean isMayor) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<S2COpenCapitolScreen> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath("capitol", "s2c_open_capitol_screen"));
 
@@ -36,11 +37,15 @@ public record S2COpenCapitolScreen(Team team, BlockPos capitolPos, boolean isCap
 			List<CapitolMember> members = ByteBufCodecs.collection(ArrayList::new, CapitolMember.STREAM_CODEC).decode(buffer);
 			boolean canAssignMayor = ByteBufCodecs.BOOL.decode(buffer);
 			long playerPermissions = ByteBufCodecs.VAR_LONG.decode(buffer);
+			int claimsUsed = ByteBufCodecs.VAR_INT.decode(buffer);
+			int claimsMax = ByteBufCodecs.VAR_INT.decode(buffer);
+			boolean isMayor = ByteBufCodecs.BOOL.decode(buffer);
 			return new S2COpenCapitolScreen(
 				team, pos, isCapital, CapitolTier.byName(tierName), canUpgrade,
 				blockName.isEmpty() ? null : blockName,
 				mayorName.isEmpty() ? null : mayorName,
-				members, canAssignMayor, playerPermissions
+				members, canAssignMayor, playerPermissions,
+				claimsUsed, claimsMax, isMayor
 			);
 		}
 
@@ -56,6 +61,9 @@ public record S2COpenCapitolScreen(Team team, BlockPos capitolPos, boolean isCap
 			ByteBufCodecs.collection(ArrayList::new, CapitolMember.STREAM_CODEC).encode(buffer, new ArrayList<>(payload.members()));
 			ByteBufCodecs.BOOL.encode(buffer, payload.canAssignMayor());
 			ByteBufCodecs.VAR_LONG.encode(buffer, payload.playerPermissions());
+			ByteBufCodecs.VAR_INT.encode(buffer, payload.claimsUsed());
+			ByteBufCodecs.VAR_INT.encode(buffer, payload.claimsMax());
+			ByteBufCodecs.BOOL.encode(buffer, payload.isMayor());
 		}
 	};
 
