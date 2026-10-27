@@ -20,6 +20,8 @@ public class Asset {
 
 	public class Blit {
 		private int startX, startY, blitWidth, blitHeight;
+		//The size this slice is drawn at when it differs from the art it samples; 0 means "as cut".
+		private int drawWidth, drawHeight;
 
 		public Blit(int startX, int startY, int blitWidth, int blitHeight) {
 			this.startX = startX;
@@ -28,8 +30,21 @@ public class Asset {
 			this.blitHeight = blitHeight;
 		}
 
+		// Draws the same slice wider, taller or both, for art that has to cover more room than it was cut for.
+		public Blit stretchedTo(int width, int height) {
+			this.drawWidth = width;
+			this.drawHeight = height;
+			return this;
+		}
+
 		public void renderBlit(GuiGraphics guiGraphics, int x, int y) {
-			guiGraphics.blit(texture, x, y, startX, startY, blitWidth, blitHeight, textureWidth, textureHeight);
+			if (drawWidth > 0 || drawHeight > 0) renderBlit(guiGraphics, x, y, drawWidth, drawHeight);
+			else guiGraphics.blit(texture, x, y, startX, startY, blitWidth, blitHeight, textureWidth, textureHeight);
+		}
+
+		// The same slice drawn at a different size, for art that has to grow rather than move.
+		public void renderBlit(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+			guiGraphics.blit(texture, x, y, width, height, startX, startY, blitWidth, blitHeight, textureWidth, textureHeight);
 		}
 
 		public void setPosition(@Nullable Integer x, @Nullable Integer y) {
@@ -43,10 +58,10 @@ public class Asset {
 		}
 
 		public int getBlitWidth() {
-			return blitWidth;
+			return drawWidth > 0 ? drawWidth : blitWidth;
 		}
 		public int getBlitHeight() {
-			return blitHeight;
+			return drawHeight > 0 ? drawHeight : blitHeight;
 		}
 	}
 }

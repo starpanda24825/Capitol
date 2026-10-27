@@ -1,5 +1,6 @@
 package com.createcivilization.capitol.client.gui.base;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -69,6 +70,10 @@ public abstract class SmartScreen extends Screen {
 			if (hovering != null) hovering.hoverLeave(mouseX, mouseY);
 			hovering = currentHover;
 		}
+
+		if (hovering != null && hovering.tooltip() instanceof Component tooltip) {
+			guiGraphics.renderTooltip(Minecraft.getInstance().font, tooltip, mouseX, mouseY);
+		}
 	}
 
 	public Interactable lastClick;
@@ -77,7 +82,9 @@ public abstract class SmartScreen extends Screen {
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		Interactable currentClick = null;
 		if (button == 0) {
-			for (Interactable interactable : interactableList) {
+			// a click can rebuild the list under (a ribbon swaps the page it shows)
+			//the live list may be cleared and refilled while the loop is still running
+			for (Interactable interactable : List.copyOf(interactableList)) {
 				if (!interactable.getBoundingBox().isPositionInside((int) mouseX, (int) mouseY)) continue;
 				Interactable v = interactable.clickStart((int) mouseX, (int) mouseY);
 				currentClick = v == null ? currentClick : v;
@@ -99,5 +106,12 @@ public abstract class SmartScreen extends Screen {
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
 		interactableList.forEach(interactable -> interactable.input(keyCode, scanCode, modifiers));
 		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char character, int modifiers) {
+		// vanilla hands us the finished character, which is the only reliable way to get spaces and symbols
+		interactableList.forEach(interactable -> interactable.charTyped(character, modifiers));
+		return super.charTyped(character, modifiers);
 	}
 }

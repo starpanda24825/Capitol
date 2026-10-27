@@ -36,8 +36,16 @@ public interface Interactable {
 	default void input(int keyCode, int scanCode, int modifiers) {
 		if (isHidden()) return;
 	}
+	default void charTyped(char character, int modifiers) {
+		if (isHidden()) return;
+	}
 	default void scroll() {
 		if (isHidden()) return;
+	}
+
+	// What the screen shows next to the cursor while the mouse rests here, or null for nothing.
+	default @Nullable Component tooltip() {
+		return null;
 	}
 
 	void hide();

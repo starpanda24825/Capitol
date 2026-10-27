@@ -12,11 +12,12 @@ public abstract class BookScreen extends SmartScreen {
 
 	@Override
 	protected void init() {
-		super.init();
-		int halfWidth = BACKGROUND.getBlitWidth() / 2;
+		// measured from whichever page this screen draws, so a screen can bring its own art
+		int halfWidth = getBackgroundBlit().getBlitWidth() / 2;
 		this.leftPos = (this.width / 2) - halfWidth;
 		this.rightPos = leftPos + halfWidth;
-		this.topPos = (this.height - BACKGROUND.getBlitHeight()) / 2;
+		this.topPos = (this.height - getBackgroundBlit().getBlitHeight()) / 2;
+		super.init();
 	}
 
 	@Override

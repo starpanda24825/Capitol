@@ -16,6 +16,7 @@ import static org.lwjgl.glfw.GLFW.*;
 public abstract class TextInputInteractable implements Interactable.BlitInteractable {
 
 	public static final int gray = Color.GRAY.getRGB();
+	private static final int MAX_LENGTH = 32;
 	private final Asset.Blit idleBlit;
 	private final Component placeHolderText;
 	private StringBuilder value = new StringBuilder();
@@ -83,17 +84,17 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 		}
 		if (keyCode == GLFW_KEY_TAB || keyCode == GLFW_KEY_RIGHT) {
 			setValue(closestTeamName);
-			return;
 		}
+	}
 
-		String keyName = glfwGetKeyName(keyCode, scanCode);
-		if (keyName != null && keyName.length() == 1) {
-			char character = keyName.charAt(0);
-			if ((modifiers & GLFW_MOD_SHIFT) != 0) {
-				character = Character.toUpperCase(character);
-			}
-			value.append(character);
-		}
+	@Override
+	public void charTyped(char character, int modifiers) {
+		// the character itself comes from vanilla's charTyped path; glfwGetKeyName wouldn't give
+		// us spaces or symbols, so nothing here is appended from a key press
+		if (isHidden() || !isActive()) return;
+		if (value.length() >= MAX_LENGTH) return;
+		if (Character.isISOControl(character)) return;
+		value.append(character);
 	}
 
 	private boolean isActive() {
