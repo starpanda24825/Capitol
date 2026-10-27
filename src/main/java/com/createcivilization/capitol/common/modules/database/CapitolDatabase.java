@@ -67,6 +67,23 @@ public class CapitolDatabase extends Database {
 	}
 
 
+	//Updates a team's editable fields (name, tag, colour, description). validate the values first; this just writes them.
+
+	public void updateTeam(Team team, String name, String tag, int color, String description) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"UPDATE teams SET name = ?, tag = ?, color = ?, description = ? WHERE id = ?")) {
+			ps.setString(1, name);
+			ps.setString(2, tag);
+			ps.setInt(3, color);
+			ps.setString(4, description);
+			ps.setString(5, team.getId().toString());
+			ps.execute();
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while updating team in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
 	public void setTeamPermissions(Team team, long permissions) {
 		try (PreparedStatement ps = getConnection().prepareStatement(
 			"UPDATE teams SET team_permissions = ? WHERE id = ?")) {

@@ -16,6 +16,7 @@ import com.createcivilization.capitol.common.networking.packets.S2CInboxPage;
 import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
 import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
+import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
@@ -89,7 +90,11 @@ public class ClientPayloadHandler {
 		ClientSubClaimCache.setPage(payload);
 	}
 
+	public static void teamDirectoryHandler(final S2CTeamDirectory payload, final IPayloadContext context) {
+		ClientTeamDirectoryCache.set(payload);
+	}
+
 	public static void bookInvalidateHandler(final S2CBookInvalidate payload, final IPayloadContext context) {
-		// TODO: mark the affected tabs stale in BookState and re-request the visible one
+		// TODO(GUI redo): mark the affected tabs stale and re-request the visible one
 	}
 }

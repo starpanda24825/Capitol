@@ -41,6 +41,10 @@ import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimPe
 import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimProtections;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
+import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
+import com.createcivilization.capitol.common.managers.TeamDirectoryManager;
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
 import com.createcivilization.capitol.common.networking.packets.C2SInvitePlayer;
@@ -452,6 +456,7 @@ public class ServerPayloadHandler {
 		player.displayClientMessage(Component.translatable("commands.capitol.team.invite.success",
 			Component.literal(playerToInvite.getName().getString()).withStyle(ChatFormatting.WHITE))
 			.withStyle(ChatFormatting.GRAY), false);
+		TeamDirectoryManager.broadcast(team);
 	}
 
 	// the naming screen confirmed: register the block (name is globally unique)
@@ -1081,6 +1086,67 @@ public class ServerPayloadHandler {
 		int total = SubClaimManager.count(player, team, request.all(), ownerFilter, request.query());
 		PacketDistributor.sendToPlayer((ServerPlayer) player,
 			new S2CSubClaimsPage(Math.max(0, request.page()), total, request.all(), rows));
+	}
+
+	//team/member directory: one read-only snapshot per team, for the team screens
+
+	public static void handleRequestTeamDirectory(final C2SRequestTeamDirectory request, final IPayloadContext context) {
+		TeamDirectoryManager.send(context.player().getUUID());
+	}
+
+	public static void handleRevokeInvite(final C2SRevokeInvite request, final IPayloadContext context) {
+		Player player = context.player();
+		CapitolDatabase database = DatabaseManager.database;
+		Team team = database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		if (!Permission.INVITE_MEMBERS.hasPermission(database.getPlayerPermission(player, team))) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.invite.no_permission"));
+			return;
+		}
+		InviteHandler.removeInvite(request.target(), team);
+		sendAction(player, RoleManager.Check.allow());
+		TeamDirectoryManager.broadcast(team);
+	}
+
+	public static void handleEditTeam(final C2SEditTeam request, final IPayloadContext context) {
+		Player player = context.player();
+		CapitolDatabase database = DatabaseManager.database;
+		Team team = database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		if (!Permission.MANAGE_TEAM.hasPermission(database.getPlayerPermission(player, team))) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.edit.no_permission"));
+			return;
+		}
+
+		String name = request.name() == null ? "" : request.name().trim();
+		if (!Team.isValidName(name)) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.create.invalid_name"));
+			return;
+		}
+		if (!name.equalsIgnoreCase(team.getName()) && database.teamNameExists(name)) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.create.name_exists"));
+			return;
+		}
+		String tag = request.tag() == null ? "" : request.tag().trim();
+		if (!Team.isValidTag(tag)) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.create.invalid_tag"));
+			return;
+		}
+		String description = request.description() == null ? "" : request.description().trim();
+		if (description.length() > 128) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.team.edit.description_long"));
+			return;
+		}
+
+		// colour arrives as plain RGB; store it opaque to make it match
+		database.updateTeam(team, name, tag, 0xFF000000 | (request.color() & 0xFFFFFF), description);
+		sendAction(player, RoleManager.Check.allow());
 	}
 
 	@Nullable

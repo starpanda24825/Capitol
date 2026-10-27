@@ -13,6 +13,8 @@ Chunk claim data is synced between server and client via NeoForge's networking l
 - **Role/member** — `C2SCreateRole`, `C2SEditRole`, `C2SSetRolePermissions`, `C2SDeleteRole`, `C2SMoveRole`, `C2SAssignRole`, `C2SKickMember`; the server answers any of them with `S2CActionResult(success, langKey, args)`.
 - **Lifecycle** — `C2STransferLeadership`, `C2SLeaveTeam`, `C2SRequestDisband`, `C2SRespondDisband`, `C2SCancelDisband`.
 - **Mail** — `C2SSendMail`, `C2SRequestInbox`, `C2SOpenMail`, `C2SMailAction` up; `S2CInboxPage`, `S2CMailBody`, `S2CMailUnread` down.
+- **Team directory** — `S2CTeamDirectory` is one read-only snapshot per team (members, roles, pending invites, capability flags) so the team screens need no per-tab round trips; `C2SRequestTeamDirectory` asks for it and `C2SRevokeInvite` cancels a pending invite.
+- **Team editing** — `C2SEditTeam` saves the team's name/tag/description/colour; the server re-validates every field and `MANAGE_TEAM`.
 
 ### Client Side
 - `ClientClaimCache` stores a `HashMap<ChunkPos, Team>` of all known claims
@@ -21,3 +23,4 @@ Chunk claim data is synced between server and client via NeoForge's networking l
 - `ClientPayloadHandler` receives S2C packets and updates the caches
 - `ServerPayloadHandler` receives C2S requests and responds with the chunk's owner from the database; also validates and persists `C2SCreateSubClaim` and damages the wand on `C2SDamageWand`
 - `ClientMailCache` mirrors the last inbox page, open mail and unread count; cleared on logout with the other caches
+- `ClientTeamDirectoryCache` mirrors the last `S2CTeamDirectory` snapshot; cleared on logout with the other caches

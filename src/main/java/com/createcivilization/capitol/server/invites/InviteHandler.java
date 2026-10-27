@@ -90,6 +90,20 @@ public class InviteHandler {
 		return teams;
 	}
 
+	// UUIDs of players still holding a valid invite to this team (the pending-invite view).
+	public static List<UUID> getInviteesForTeam(Team team){
+		List<UUID> invitees = new ArrayList<>();
+		for (UUID playerUUID : new ArrayList<>(invites.keySet())) {
+			for (Invite invite : activeInvites(playerUUID)) {
+				if (invite.team().getId().equals(team.getId())) {
+					invitees.add(playerUUID);
+					break;
+				}
+			}
+		}
+		return invitees;
+	}
+
 	public static boolean hasValidInvite(UUID playerUUID, Team team){
 		for (Invite invite : activeInvites(playerUUID)) {
 			if (invite.team().getId().equals(team.getId())) return true;

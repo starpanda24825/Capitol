@@ -5,6 +5,7 @@ import com.createcivilization.capitol.client.TeamChatState;
 import com.createcivilization.capitol.client.networking.ClientClaimCache;
 import com.createcivilization.capitol.client.networking.ClientMailCache;
 import com.createcivilization.capitol.client.networking.ClientSubClaimCache;
+import com.createcivilization.capitol.client.networking.ClientTeamDirectoryCache;
 import com.createcivilization.capitol.common.data.Team;
 import com.createcivilization.capitol.common.networking.packets.C2SChunkRequest;
 import net.minecraft.ChatFormatting;
@@ -124,6 +125,7 @@ public class ChunkEvents {
 		ClientClaimCache.clearClaims();
 		ClientSubClaimCache.clear();
 		ClientMailCache.clear();
+		ClientTeamDirectoryCache.clear();
 		lastPlayerChunk = null;
 		pendingChunkAnnouncement = null;
 		hasLastTerritory = false;

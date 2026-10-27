@@ -49,6 +49,10 @@ import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimPe
 import com.createcivilization.capitol.common.networking.packets.C2SSetSubClaimProtections;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
+import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
+import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -393,6 +397,30 @@ public class CapitolNetworking {
 			S2CSubClaimsPage.TYPE,
 			S2CSubClaimsPage.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ClientPayloadHandler::subClaimsPageHandler)
+		);
+
+		registrar.playToServer(
+			C2SEditTeam.TYPE,
+			C2SEditTeam.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleEditTeam)
+		);
+
+		registrar.playToClient(
+			S2CTeamDirectory.TYPE,
+			S2CTeamDirectory.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::teamDirectoryHandler)
+		);
+
+		registrar.playToServer(
+			C2SRequestTeamDirectory.TYPE,
+			C2SRequestTeamDirectory.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRequestTeamDirectory)
+		);
+
+		registrar.playToServer(
+			C2SRevokeInvite.TYPE,
+			C2SRevokeInvite.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRevokeInvite)
 		);
 	}
 
