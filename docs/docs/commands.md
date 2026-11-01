@@ -10,6 +10,11 @@ Prints a formatted list of all available commands to the player's chat.
 
 ---
 
+## /capitol menu
+
+Opens the manager for the player, from anywhere and without needing a capitol block.
+---
+
 ## /capitol team
 
 Team management commands. Most subcommands require the player to be in a team already.
