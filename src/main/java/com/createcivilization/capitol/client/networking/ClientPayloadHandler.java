@@ -17,6 +17,7 @@ import com.createcivilization.capitol.common.networking.packets.S2CMailBody;
 import com.createcivilization.capitol.common.networking.packets.S2CMailUnread;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
@@ -60,6 +61,11 @@ public class ClientPayloadHandler {
 
 	public static void openCapitolNamingScreenHandler(final S2COpenCapitolNamingScreen payload, final IPayloadContext context) {
 		CapitolClientHooks.openCapitolNaming.open(payload);
+	}
+
+	public static void openManagerBookHandler(final S2COpenManagerBook payload, final IPayloadContext context) {
+		ClientBookState.apply(payload);
+		CapitolClientHooks.openManagerBook.open(payload);
 	}
 
 	public static void syncWarsHandler(final S2CSyncWars payload, final IPayloadContext context) {

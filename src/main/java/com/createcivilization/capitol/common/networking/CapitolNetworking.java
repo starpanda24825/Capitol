@@ -53,6 +53,8 @@ import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
+import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
 
 import net.neoforged.bus.api.IEventBus;
@@ -69,7 +71,7 @@ public class CapitolNetworking {
 
 	@SubscribeEvent
 	public static void register(final RegisterPayloadHandlersEvent event) {
-		final PayloadRegistrar registrar = event.registrar("4");
+		final PayloadRegistrar registrar = event.registrar("5");
 
 		registrar.playToClient(
 			S2CChunkData.TYPE,
@@ -421,6 +423,18 @@ public class CapitolNetworking {
 			C2SRevokeInvite.TYPE,
 			C2SRevokeInvite.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRevokeInvite)
+		);
+
+		registrar.playToServer(
+			C2SOpenBook.TYPE,
+			C2SOpenBook.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleOpenBook)
+		);
+
+		registrar.playToClient(
+			S2COpenManagerBook.TYPE,
+			S2COpenManagerBook.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ClientPayloadHandler::openManagerBookHandler)
 		);
 	}
 

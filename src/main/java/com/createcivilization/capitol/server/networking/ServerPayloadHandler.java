@@ -44,6 +44,8 @@ import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage
 import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
+import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
+import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import com.createcivilization.capitol.common.managers.TeamDirectoryManager;
 import com.createcivilization.capitol.common.networking.packets.C2SDamageWand;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
@@ -1147,6 +1149,15 @@ public class ServerPayloadHandler {
 		// colour arrives as plain RGB; store it opaque to make it match
 		database.updateTeam(team, name, tag, 0xFF000000 | (request.color() & 0xFFFFFF), description);
 		sendAction(player, RoleManager.Check.allow());
+	}
+
+	// per-player manager book: opened by /capitol menu and the open-menu keybind
+
+	public static void handleOpenBook(final C2SOpenBook request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		long permissions = team == null ? 0L : DatabaseManager.database.getPlayerPermission(player, team);
+		PacketDistributor.sendToPlayer((ServerPlayer) player, new S2COpenManagerBook(team, permissions));
 	}
 
 	@Nullable

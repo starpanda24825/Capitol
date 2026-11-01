@@ -2,6 +2,7 @@ package com.createcivilization.capitol.client.events;
 
 import com.createcivilization.capitol.Capitol;
 import com.createcivilization.capitol.client.TeamChatState;
+import com.createcivilization.capitol.client.networking.ClientBookState;
 import com.createcivilization.capitol.client.networking.ClientClaimCache;
 import com.createcivilization.capitol.client.networking.ClientMailCache;
 import com.createcivilization.capitol.client.networking.ClientSubClaimCache;
@@ -126,6 +127,7 @@ public class ChunkEvents {
 		ClientSubClaimCache.clear();
 		ClientMailCache.clear();
 		ClientTeamDirectoryCache.clear();
+		ClientBookState.clear();
 		lastPlayerChunk = null;
 		pendingChunkAnnouncement = null;
 		hasLastTerritory = false;

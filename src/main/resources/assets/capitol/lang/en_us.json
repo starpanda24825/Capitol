@@ -12,7 +12,7 @@
 	"key.capitol.unclaim_chunk": "Unclaim Chunk",
 	"key.capitol.toggle_claim_borders": "View claim borders",
 	"key.capitol.stats": "Open claim statistics",
-	"key.capitol.open_claim_menu": "Open claim menu",
+	"key.capitol.open_menu": "Open Capitol Menu",
 	"key.capitol.toggle_team_chat": "Toggle team chat",
 
 	"gui.capitol.claim_block_menu": "Claim statistics",
@@ -33,6 +33,16 @@
 	"screen.capitol.sub_claim_naming.confirm":     "Confirm",
 
 	"screen.capitol.capitol_block.title":          "Capitol",
+
+	"screen.capitol.book.title":                   "Capitol Manager",
+	"screen.capitol.book.no_team":                  "You are not in a team",
+	"screen.capitol.book.search":                   "Search players...",
+
+	"screen.capitol.book.tab.team":                "Team",
+	"screen.capitol.book.tab.members":             "Members",
+	"screen.capitol.book.tab.roles":               "Roles",
+	"screen.capitol.book.tab.mail":                "Mail",
+	"screen.capitol.book.tab.subclaims":           "Sub-Claims",
 
 	"commands.capitol.capitol_block.invalid_naming": "That Capitol Block isn't awaiting a name",
 

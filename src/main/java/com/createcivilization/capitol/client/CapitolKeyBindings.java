@@ -28,6 +28,7 @@ public class CapitolKeyBindings {
     public static final KeyMapping claimChunk = binding("key.capitol.claim_chunk");
     public static final KeyMapping unclaimChunk = binding("key.capitol.unclaim_chunk");
     public static final KeyMapping toggleClaimBorders = binding("key.capitol.toggle_claim_borders");
+    public static final KeyMapping openMenu = binding("key.capitol.open_menu");
 
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
@@ -35,5 +36,6 @@ public class CapitolKeyBindings {
         event.register(claimChunk);
         event.register(unclaimChunk);
         event.register(toggleClaimBorders);
+        event.register(openMenu);
     }
 }

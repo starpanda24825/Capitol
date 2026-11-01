@@ -5,6 +5,7 @@ import com.createcivilization.capitol.client.CapitolKeyBindings;
 import com.createcivilization.capitol.client.TeamChatState;
 import com.createcivilization.capitol.client.renderer.BorderRenderer;
 import com.createcivilization.capitol.common.networking.packets.C2SClaimChunk;
+import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
 import com.createcivilization.capitol.common.networking.packets.C2STeamChat;
 import com.createcivilization.capitol.common.networking.packets.C2SUnclaimChunk;
 
@@ -57,6 +58,11 @@ public class ToggleEvents {
             PacketDistributor.sendToServer(new C2SUnclaimChunk(
                 new long[]{ mc.player.chunkPosition().toLong() }
             ));
+        }
+
+        // Open the per-player manager book
+        if (CapitolKeyBindings.openMenu.consumeClick()) {
+            PacketDistributor.sendToServer(new C2SOpenBook());
         }
 
         // Toggle claim borders

@@ -12,6 +12,9 @@ public final class CapitolBookMenuClient {
 			Minecraft.getInstance().setScreen(new CapitolBookMenu(payload));
 		CapitolClientHooks.openCapitolNaming = payload ->
 			Minecraft.getInstance().setScreen(new CapitolBlockNamingScreen(payload));
+		// the handler lands the snapshot in ClientBookState before this runs, so the screen reads it from there
+		CapitolClientHooks.openManagerBook = payload ->
+			Minecraft.getInstance().setScreen(new CapitolManagerMenu());
 	}
 
 	private CapitolBookMenuClient() {}
