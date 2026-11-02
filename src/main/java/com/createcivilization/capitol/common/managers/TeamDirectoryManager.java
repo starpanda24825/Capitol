@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -59,10 +60,11 @@ public final class TeamDirectoryManager {
 			members.add(memberRow(member.playerUUID(), team));
 		}
 
+		Map<Integer, Integer> roleCounts = db().countRoleMembers(team);
 		List<S2CTeamDirectory.RoleRow> roles = new ArrayList<>();
 		for (TeamRole role : db().getTeamRoles(team)) {
 			roles.add(new S2CTeamDirectory.RoleRow(role.id(), role.name(), role.color(), role.position(),
-				role.systemKey(), role.isMailable(), role.permissions(), db().getRoleMembers(team, role.id()).size()));
+				role.systemKey(), role.isMailable(), role.permissions(), roleCounts.getOrDefault(role.id(), 0)));
 		}
 
 		List<S2CTeamDirectory.InviteRow> invites = new ArrayList<>();

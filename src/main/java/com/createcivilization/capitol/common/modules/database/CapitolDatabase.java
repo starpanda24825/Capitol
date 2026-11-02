@@ -937,7 +937,31 @@ public class CapitolDatabase extends Database {
 		return members;
 	}
 
-	// Inserts a role and returns it. Use systemKey = null for a custom role.
+	/**
+	 * Member counts per role id in one grouped query, so the book snapshot doesn't
+	 * run a count per role (N+1). Incase a member holding the same role twice counts once.
+	 */
+	public Map<Integer, Integer> countRoleMembers(Team team) {
+		Map<Integer, Integer> counts = new HashMap<>();
+		try (PreparedStatement ps = getConnection().prepareStatement(
+				"SELECT role_id, COUNT(*) AS member_count FROM (" +
+					"SELECT role_id, player_uuid FROM team_members WHERE team_id = ? " +
+					"UNION SELECT role_id, player_uuid FROM member_roles WHERE team_id = ?" +
+					") GROUP BY role_id")) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				while (rs.next()) counts.put(rs.getInt("role_id"), rs.getInt("member_count"));
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while counting role members in database.", e);
+			throw new RuntimeException(e);
+		}
+		return counts;
+	}
+
+	//Inserts a role and returns it. Use systemKey = null for a custom role.
+
 	public TeamRole createRole(Team team, String name, int color, long permissions, int position, @Nullable String systemKey) {
 		try (PreparedStatement ps = getConnection().prepareStatement(
 				"INSERT INTO team_roles (team_id, name, permissions, color, position, system_key, flags) VALUES (?, ?, ?, ?, ?, ?, ?)",
