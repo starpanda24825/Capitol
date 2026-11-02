@@ -13,7 +13,6 @@ import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDi
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
@@ -307,13 +306,6 @@ public class CapitolManagerMenu extends BookScreen {
 
 		private SearchField() {
 			super(teamBar(), Component.translatable("screen.capitol.book.search"), 0, 0, null, null, true);
-		}
-
-		@Override
-		public void input(int keyCode, int scanCode, int modifiers) {
-			// the field narrows the list, it does not pick a name, so Tab must not accept an autofill
-			if (keyCode == GLFW.GLFW_KEY_TAB || keyCode == GLFW.GLFW_KEY_RIGHT) return;
-			super.input(keyCode, scanCode, modifiers);
 		}
 
 		@Override

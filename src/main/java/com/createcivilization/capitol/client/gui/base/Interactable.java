@@ -244,6 +244,12 @@ public interface Interactable {
 		}
 
 		@Override
+		public void charTyped(char character, int modifiers) {
+			Interactable.super.charTyped(character, modifiers);
+			getInteractableList().forEach(interactable -> interactable.charTyped(character, modifiers));
+		}
+
+		@Override
 		public void scroll() {
 			Interactable.super.scroll();
 		}

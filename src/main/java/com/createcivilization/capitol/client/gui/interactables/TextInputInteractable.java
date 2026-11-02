@@ -10,13 +10,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static org.lwjgl.glfw.GLFW.*;
 
 public abstract class TextInputInteractable implements Interactable.BlitInteractable {
 
 	public static final int gray = Color.GRAY.getRGB();
-	private static final int MAX_LENGTH = 32;
 	private final Asset.Blit idleBlit;
 	private final Component placeHolderText;
 	private StringBuilder value = new StringBuilder();
@@ -25,6 +25,13 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 	boolean dropShadow;
 	SmartScreen smartScreen;
 	List<String> autoFill;
+
+	// insert position within the value; always in [0, value.length()]
+	private int cursor = 0;
+	private int maxLength = 64;
+	@Nullable
+	private Predicate<String> validator;
+	private String closestTeamName = "";
 
 	public TextInputInteractable(Asset.Blit idleBlit, @Nullable Component placeHolderText, int x, int y, @Nullable List<String> autoFill, @Nullable Integer color, boolean dropShadow) {
 		this.idleBlit = idleBlit;
@@ -37,25 +44,44 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 	}
 
 	private boolean isHidden = false;
-	private String closestTeamName = "";
+
+	// Max characters the field accepts, it defaults to 64.
+	public TextInputInteractable maxLength(int maxLength) {
+		this.maxLength = Math.max(1, maxLength);
+		return this;
+	}
+
+	// Optional extra check applied before a change is accepted
+	public TextInputInteractable validate(@Nullable Predicate<String> validator) {
+		this.validator = validator;
+		return this;
+	}
 
 	@Override
 	public void render(GuiGraphics guiGraphics) {
 		BlitInteractable.super.render(guiGraphics);
 
+		int textY = this.y + Minecraft.getInstance().font.lineHeight / 2 - 2;
 		String value = getValue();
-		if (value.isEmpty() && !isActive()) guiGraphics.drawString(Minecraft.getInstance().font, placeHolderText.getString(), this.x + 3, this.y + Minecraft.getInstance().font.lineHeight / 2 - 2, gray, dropShadow);
-		else {
-			// autofill
-			if (autoFill != null) {
-				getClosestTeamName(value);
-				guiGraphics.drawString(Minecraft.getInstance().font, closestTeamName, this.x + 3, this.y + Minecraft.getInstance().font.lineHeight / 2 - 2, gray, dropShadow);
-			}
-			guiGraphics.drawString(Minecraft.getInstance().font, value + (isActive() && (System.currentTimeMillis() / 500) % 2 == 0 ? "_" : ""), this.x + 3, this.y + Minecraft.getInstance().font.lineHeight / 2 - 2, color, dropShadow);
+		if (value.isEmpty() && !isActive()) {
+			guiGraphics.drawString(Minecraft.getInstance().font, placeHolderText.getString(), this.x + 3, textY, gray, dropShadow);
+			return;
+		}
+
+		if (autoFill != null) {
+			updateClosest(value);
+			guiGraphics.drawString(Minecraft.getInstance().font, closestTeamName, this.x + 3, textY, gray, dropShadow);
+		}
+
+		guiGraphics.drawString(Minecraft.getInstance().font, value, this.x + 3, textY, color, dropShadow);
+		// blinking caret drawn at the cursor's pixel offset
+		if (isActive() && (System.currentTimeMillis() / 500) % 2 == 0) {
+			int caretX = this.x + 3 + Minecraft.getInstance().font.width(value.substring(0, Math.min(cursor, value.length())));
+			guiGraphics.drawString(Minecraft.getInstance().font, "_", caretX, textY, color, dropShadow);
 		}
 	}
 
-	private void getClosestTeamName(String value) {
+	private void updateClosest(String value) {
 		for (String string : autoFill) {
 			if (string.toLowerCase().startsWith(value.toLowerCase())) {
 				closestTeamName = string;
@@ -73,17 +99,61 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 	@Override
 	public void input(int keyCode, int scanCode, int modifiers) {
 		if (!isActive()) return;
+		boolean ctrl = (modifiers & GLFW_MOD_CONTROL) != 0;
 
-		if (keyCode == GLFW_KEY_BACKSPACE && !value.isEmpty()) {
-			value.deleteCharAt(value.length() - 1);
-			return;
+		if (ctrl) {
+			switch (keyCode) {
+				case GLFW_KEY_A -> { cursor = value.length(); return; }
+				case GLFW_KEY_C -> {
+					Minecraft.getInstance().keyboardHandler.setClipboard(getValue());
+					return;
+				}
+				case GLFW_KEY_V -> {
+					insert(Minecraft.getInstance().keyboardHandler.getClipboard());
+					return;
+				}
+				default -> { }
+			}
 		}
-		if (keyCode == GLFW_KEY_ENTER) {
-			this.smartScreen.lastClick = null;
-			return;
-		}
-		if (keyCode == GLFW_KEY_TAB || keyCode == GLFW_KEY_RIGHT) {
-			setValue(closestTeamName);
+
+		switch (keyCode) {
+			case GLFW_KEY_BACKSPACE -> {
+				if (cursor > 0) {
+					String next = value.substring(0, cursor - 1) + value.substring(cursor);
+					if (accept(next)) {
+						value.deleteCharAt(cursor - 1);
+						cursor--;
+					}
+				}
+				return;
+			}
+			case GLFW_KEY_DELETE -> {
+				if (cursor < value.length()) {
+					String next = value.substring(0, cursor) + value.substring(cursor + 1);
+					if (accept(next)) value.deleteCharAt(cursor);
+				}
+				return;
+			}
+			case GLFW_KEY_LEFT -> {
+				if (cursor > 0) cursor--;
+				return;
+			}
+			case GLFW_KEY_RIGHT -> {
+				if (cursor < value.length()) cursor++;
+				return;
+			}
+			case GLFW_KEY_HOME -> { cursor = 0; return; }
+			case GLFW_KEY_END -> { cursor = value.length(); return; }
+			case GLFW_KEY_ENTER -> {
+				if (this.smartScreen != null) this.smartScreen.lastClick = null;
+				return;
+			}
+			case GLFW_KEY_TAB -> {
+				// autofill stays on tab only when a suggestion exists
+				if (autoFill != null && !closestTeamName.isEmpty()) setValue(closestTeamName);
+				return;
+			}
+			default -> { }
 		}
 	}
 
@@ -93,8 +163,31 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 		// us spaces or symbols, so nothing here is appended from a key press
 		if (isHidden() || !isActive()) return;
 		if (value.length() >= MAX_LENGTH) return;
+		if (!isActive()) return;
+		if (character == '\n' || character == '\r' || character == '\t') return;
 		if (Character.isISOControl(character)) return;
-		value.append(character);
+		insert(String.valueOf(character));
+	}
+
+	// inserts at the cursor, respecting the length cap and validator
+	private void insert(String text) {
+		if (text == null || text.isEmpty()) return;
+		StringBuilder candidate = new StringBuilder(value);
+		String cleaned = text.replaceAll("\\p{Cntrl}", "");
+		if (cleaned.isEmpty()) return;
+		int room = maxLength - value.length();
+		if (room <= 0) return;
+		if (cleaned.length() > room) cleaned = cleaned.substring(0, room);
+
+		candidate.insert(cursor, cleaned);
+		if (!accept(candidate.toString())) return;
+		value = candidate;
+		cursor += cleaned.length();
+	}
+
+	private boolean accept(String candidate) {
+		if (candidate.length() > maxLength) return false;
+		return validator == null || validator.test(candidate);
 	}
 
 	private boolean isActive() {
@@ -107,7 +200,13 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 	}
 
 	public void setValue(String val) {
-		this.value = new StringBuilder(val);
+		this.value = new StringBuilder(val == null ? "" : val);
+		if (this.value.length() > maxLength) this.value.setLength(maxLength);
+		this.cursor = this.value.length();
+	}
+
+	public int getCursor() {
+		return cursor;
 	}
 
 	@Override

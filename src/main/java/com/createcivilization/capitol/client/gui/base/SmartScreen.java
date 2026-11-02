@@ -114,4 +114,12 @@ public abstract class SmartScreen extends Screen {
 		interactableList.forEach(interactable -> interactable.charTyped(character, modifiers));
 		return super.charTyped(character, modifiers);
 	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		for (Interactable interactable : interactableList) {
+			if (interactable.getBoundingBox().isPositionInside((int) mouseX, (int) mouseY)) interactable.scroll();
+		}
+		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+	}
 }
