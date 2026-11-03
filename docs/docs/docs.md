@@ -5,6 +5,8 @@ This folder documents Capitol's core systems. Each file covers one system — ke
 - [Sub-Claims](subclaims.md) — player-owned boxes, wand, creation rules, lifecycle
 - [Database](database.md) — SQLite schema, managers, queries
 - [Permissions](permissions.md) — bitfield permissions, roles, access checks
+- [Roles](roles.md) — role hierarchy, system roles, effective permissions
+- [Mail](mail.md) — in-game messaging, recipients, retention
 - [Networking](networking.md) — packets, claim cache, chunk syncing
 - [Rendering](rendering.md) — border, wall and sub-claim renderers, wand selection
 - [Commands](commands.md) — current command structure

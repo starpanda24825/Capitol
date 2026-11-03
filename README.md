@@ -19,6 +19,10 @@ This is a [Create: Civilization](https://github.com/Create-Civilization/) projec
         - [x] Permissions management
         - [x] Claims
         - [ ] Wars w/ King-Of-The-Hill style takeover (this is probably a whole subsection unto itself)
+        - [x] Roles & permissions management
+        - [x] In-game mail
+        - [x] Sub-claims
+        - [ ] Capitol Block
 
 ## Contributions
 

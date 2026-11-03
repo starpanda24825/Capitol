@@ -62,6 +62,9 @@ public class WarTakeoverEvents {
 	private static final Map<UUID, List<ClaimedChunk>> warTeamChunks = new HashMap<>();
 
 	private static int tickCounter = 0;
+	// wars refreshed every CHUNK_CACHE_REFRESH ticks instead of every tick, so the
+	// per-second loop doesn't hammer the db with the war + team joins
+	private static List<War> cachedWars = List.of();
 
 	@SubscribeEvent
 	public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -73,10 +76,11 @@ public class WarTakeoverEvents {
 	@SubscribeEvent
 	public static void onServerTick(ServerTickEvent.Pre event) {
 		CapitolDatabase database = DatabaseManager.database;
-		List<War> wars = database.getAllWars();
+		tickCounter++;
+		if (cachedWars.isEmpty() || tickCounter % CHUNK_CACHE_REFRESH == 0) cachedWars = database.getAllWars();
+		List<War> wars = cachedWars;
 		if (wars.isEmpty()) return;
 
-		tickCounter++;
 		if (tickCounter % PROCESS_INTERVAL != 0) return;
 		if (tickCounter % CHUNK_CACHE_REFRESH == 0) refreshChunkCache(wars);
 

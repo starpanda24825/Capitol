@@ -120,7 +120,7 @@ Commands are gated by a bitfield permission system defined in `Permission.java`.
 
 | Permission         | Description                                               |
 |--------------------|-----------------------------------------------------------|
-| `MANAGE_TEAM`      | Required for disbanding and protection settings           |
+| `MANAGE_TEAM`      | Rename/edit the team and toggle protection settings       |
 | `KICK_MEMBERS`     | Required to kick players from the team                    |
 | `INVITE_MEMBERS`   | Required to invite players to the team                    |
 | `MANAGE_ROLES`     | Required to toggle individual player permission overrides |

@@ -997,6 +997,7 @@ public class ServerPayloadHandler {
 
 	public static void handleRequestInbox(final C2SRequestInbox request, final IPayloadContext context) {
 		Player player = context.player();
+		if (!RequestThrottle.allow(player.getUUID())) return;
 		PacketDistributor.sendToPlayer((ServerPlayer) player, MailManager.buildPage(player, request.box(), request.page()));
 	}
 
@@ -1078,6 +1079,7 @@ public class ServerPayloadHandler {
 
 	public static void handleRequestSubClaims(final C2SRequestSubClaims request, final IPayloadContext context) {
 		Player player = context.player();
+		if (!RequestThrottle.allow(player.getUUID())) return;
 		Team team = DatabaseManager.database.getPlayerTeam(player);
 		if (team == null) {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
@@ -1093,6 +1095,7 @@ public class ServerPayloadHandler {
 	//team/member directory: one read-only snapshot per team, for the team screens
 
 	public static void handleRequestTeamDirectory(final C2SRequestTeamDirectory request, final IPayloadContext context) {
+		if (!RequestThrottle.allow(context.player().getUUID())) return;
 		TeamDirectoryManager.send(context.player().getUUID());
 	}
 
@@ -1155,6 +1158,7 @@ public class ServerPayloadHandler {
 
 	public static void handleOpenBook(final C2SOpenBook request, final IPayloadContext context) {
 		Player player = context.player();
+		if (!RequestThrottle.allow(player.getUUID())) return;
 		Team team = DatabaseManager.database.getPlayerTeam(player);
 		long permissions = team == null ? 0L : DatabaseManager.database.getPlayerPermission(player, team);
 		PacketDistributor.sendToPlayer((ServerPlayer) player, new S2COpenManagerBook(team, permissions));

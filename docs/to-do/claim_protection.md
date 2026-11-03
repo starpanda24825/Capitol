@@ -47,3 +47,14 @@ or issues, default to denying events.
 ### Sub-Claim Protections
 A sub-claim's `SubClaimProtection` bitfield is checked before the team-level `TeamProtection` in `ProtectionManager`, so a sub-claim overrides chunk protection inside its box:
 - [x] `EXPLOSION`, `MOB_GRIEFING`, `FIRE`, `PISTON`, `FLUID_FLOW`, `CROP_TRAMPLING`
+- [x] `CLAIM_SUB_CLAIMS` — sub-claim wand / `handleCreateSubClaim`
+- [x] `MANAGE_SUB_CLAIMS_OTHERS` — `SubClaimManager.canManage` (transfer/rename/delete/toggle others')
+- [x] `VIEW_ALL_SUB_CLAIMS` — `SubClaimManager.canViewAll` (full directory)
+
+### Mail
+- [x] `SEND_MAIL_MEMBERS` / `SEND_MAIL_ROLES` / `SEND_MAIL_TEAM_WIDE` / `SEND_MAIL_EXTERNAL` — `MailManager.resolveRecipients`
+- [x] `RECEIVE_EXTERNAL_MAIL` — external recipients
+
+### Disband / Mayor
+- [x] `DISBAND_TEAM` / `APPROVE_DISBAND` — `TeamLifecycleManager`
+- [x] `ASSIGN_MAYORS` — `handleSetCapitolBlockMayor`
