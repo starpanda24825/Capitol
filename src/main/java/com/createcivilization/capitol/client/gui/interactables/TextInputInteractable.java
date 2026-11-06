@@ -61,22 +61,25 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 	public void render(GuiGraphics guiGraphics) {
 		BlitInteractable.super.render(guiGraphics);
 
-		int textY = this.y + Minecraft.getInstance().font.lineHeight / 2 - 2;
+		// getX()/getY(), not the fields: a field that positions itself still wants its
+		// text where it draws, which is how the screen draws the box around it
+		int textX = getX() + 3;
+		int textY = getY() + Minecraft.getInstance().font.lineHeight / 2 - 2;
 		String value = getValue();
 		if (value.isEmpty() && !isActive()) {
-			guiGraphics.drawString(Minecraft.getInstance().font, placeHolderText.getString(), this.x + 3, textY, gray, dropShadow);
+			guiGraphics.drawString(Minecraft.getInstance().font, placeHolderText.getString(), textX, textY, gray, dropShadow);
 			return;
 		}
 
 		if (autoFill != null) {
 			updateClosest(value);
-			guiGraphics.drawString(Minecraft.getInstance().font, closestTeamName, this.x + 3, textY, gray, dropShadow);
+			guiGraphics.drawString(Minecraft.getInstance().font, closestTeamName, textX, textY, gray, dropShadow);
 		}
 
-		guiGraphics.drawString(Minecraft.getInstance().font, value, this.x + 3, textY, color, dropShadow);
+		guiGraphics.drawString(Minecraft.getInstance().font, value, textX, textY, color, dropShadow);
 		// blinking caret drawn at the cursor's pixel offset
 		if (isActive() && (System.currentTimeMillis() / 500) % 2 == 0) {
-			int caretX = this.x + 3 + Minecraft.getInstance().font.width(value.substring(0, Math.min(cursor, value.length())));
+			int caretX = textX + Minecraft.getInstance().font.width(value.substring(0, Math.min(cursor, value.length())));
 			guiGraphics.drawString(Minecraft.getInstance().font, "_", caretX, textY, color, dropShadow);
 		}
 	}

@@ -89,18 +89,31 @@ public class CapitolManagerMenu extends BookScreen {
 
 	private static final int FACE = 8;
 	private static final int ROW_GAP = 4;
+	private static final int BAR_WIDTH = 65; // The horizontal ribbon art is cut, so that the forked bit is to its right.
+	private static final int ROW_WIDTH = 105; 	//How wide a horizontal ribbon is, drawn stretched to this width.
+	private static final int ROW_LEFT = -1; // how faer the horizontal ribbons should start from the left of the page.
 
-	// The horizontal ribbon art is cut, so that the forked bit is to its right.
-	private static final int BAR_WIDTH = 65;
+	// search field colour customisation
 
-	//How wide a horizontal ribbon is, drawn stretched to this width.
-	private static final int ROW_WIDTH = 105;
+	private static final int SEARCH_FILL = 0xFFF5E7C8; // the page's parchment, a shade lighter
+	private static final int SEARCH_EDGE = 0xFF4C4940; // the darker frame
+	private static final int SEARCH_INK = 0xFF3B3630; // for font
+	// a 105x14 patch: this is only a hit-box.
+	private static final int BLANK_U = 1;
+	private static final int BLANK_V = 242;
 
+	//how the horizontal ribbon is cut from the texture sheet
 	private static Asset.Blit teamBar() {
 		return SHEET.blit(BAR_U, BAR_V + BAR_PITCH * Section.TEAM.colour(), BAR_WIDTH, BAR_HEIGHT)
 			.stretchedTo(ROW_WIDTH, BAR_HEIGHT);
 	}
 
+	// in screen coordinates of the horizontal ribbons and the search field.
+	private int rowLeft() {
+		return this.leftPos + ROW_LEFT;
+	}
+
+	// How the ribbon extends when the mouse is hovering over it.
 	private static void rowBlit(GuiGraphics guiGraphics, int x, int y, boolean hovered) {
 		Asset.Blit bar = teamBar();
 		if (hovered) bar.renderBlit(guiGraphics, x, y, ROW_WIDTH + HOVER_DROP, BAR_HEIGHT);
@@ -240,7 +253,7 @@ public class CapitolManagerMenu extends BookScreen {
 	}
 
 	private int rowAt(double mouseX, double mouseY) {
-		int x = this.leftPos;
+		int x = rowLeft();
 		if (mouseX < x || mouseX >= x + ROW_WIDTH + HOVER_DROP) return -1;
 		int bottom = this.topPos + PAGE_HEIGHT - PAGE_INSET;
 		int y = this.topPos + listY();
@@ -264,7 +277,7 @@ public class CapitolManagerMenu extends BookScreen {
 	}
 
 	private void renderMembers(GuiGraphics guiGraphics, int hovered) {
-		int x = this.leftPos;
+		int x = rowLeft();
 		int bottom = this.topPos + PAGE_HEIGHT - PAGE_INSET;
 		int y = this.topPos + listY();
 		List<S2CTeamDirectory.MemberRow> rows = members();
@@ -301,16 +314,17 @@ public class CapitolManagerMenu extends BookScreen {
 		guiGraphics.blit(skin, x, y, 8, 8, FACE, FACE, 64, 64);
 	}
 
-	// The team section's search bar: the same flat-ended row as the members, with a caret on it.
+	// The team section's search bar
 	private final class SearchField extends TextInputInteractable {
 
 		private SearchField() {
-			super(teamBar(), Component.translatable("screen.capitol.book.search"), 0, 0, null, null, true);
+			super(SHEET.blit(BLANK_U, BLANK_V, ROW_WIDTH, BAR_HEIGHT), Component.translatable("screen.capitol.book.search"),
+				0, 0, null, SEARCH_INK, true);
 		}
 
 		@Override
 		public int getX() {
-			return leftPos;
+			return rowLeft();
 		}
 
 		@Override
@@ -323,6 +337,16 @@ public class CapitolManagerMenu extends BookScreen {
 
 		@Override
 		public void setY(int y) {}
+
+		@Override
+		public void render(GuiGraphics guiGraphics) {
+			int x = getX();
+			int y = getY();
+			// a one-pixel ink frame around a lighter parchment, so it sits in the page's theme
+			guiGraphics.fill(x, y, x + ROW_WIDTH, y + BAR_HEIGHT, SEARCH_EDGE);
+			guiGraphics.fill(x + 1, y + 1, x + ROW_WIDTH - 1, y + BAR_HEIGHT - 1, SEARCH_FILL);
+			super.render(guiGraphics);
+		}
 	}
 
 	//the ribbons
