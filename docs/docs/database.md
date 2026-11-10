@@ -13,7 +13,7 @@ Schema changes ship as numbered migrations in `DatabaseManager.runMigrations`; t
 - **mail** — `id` (autoincrement PK), `sender_uuid`/`sender_team_id`/`target_team_id` (nullable, plain text so mail outlives a disband), `subject`, `body`, `sent_at`, `external`
 - **mail_recipients** — `mail_id` + `recipient_uuid` (composite PK), `is_read`, `deleted`. FK to `mail` with CASCADE delete
 
-Other tables: `sub_claims` (owned protected areas), `capitol_blocks` (named/upgradable blocks plus mayors), `player_permissions` (per-team individual overrides), `wars`, `disband_requests`/`disband_approvals`. Schema migrations run in order inside a transaction, copy `capitol.db` to `capitol.db.bak-v<old>` first and bump `PRAGMA user_version` (currently **9**).
+Other tables: `sub_claims` (owned protected areas), `capitol_blocks` (named/upgradable blocks plus mayors), `player_permissions` (per-team individual overrides), `wars`, `disband_requests`/`disband_approvals`, `team_sub_tabs` (the manager book's custom sub-tabs: `id`, `team_id`, a name filter, a colour). Schema migrations run in order inside a transaction, copy `capitol.db` to `capitol.db.bak-v<old>` first and bump `PRAGMA user_version` (currently **10**).
 
 ### Access Layer
 `CapitolDatabase` (extends abstract `Database`) handles all CRUD operations via `PreparedStatement` with parameter binding:

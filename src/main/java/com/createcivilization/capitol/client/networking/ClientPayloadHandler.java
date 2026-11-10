@@ -99,8 +99,4 @@ public class ClientPayloadHandler {
 	public static void teamDirectoryHandler(final S2CTeamDirectory payload, final IPayloadContext context) {
 		ClientTeamDirectoryCache.set(payload);
 	}
-
-	public static void bookInvalidateHandler(final S2CBookInvalidate payload, final IPayloadContext context) {
-		// TODO(GUI redo): mark the affected tabs stale and re-request the visible one
-	}
 }

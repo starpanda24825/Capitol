@@ -15,7 +15,7 @@ import java.util.List;
 public class DatabaseManager {
 
 	// bump this whenever a migration is added below
-	private static final int SCHEMA_VERSION = 9;
+	private static final int SCHEMA_VERSION = 10;
 
 	public static CapitolDatabase database = new CapitolDatabase();
 
@@ -229,6 +229,15 @@ public class DatabaseManager {
 					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
 			);
 
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS team_sub_tabs (" +
+					"id INTEGER PRIMARY KEY AUTOINCREMENT," +
+					"team_id TEXT NOT NULL," +
+					"name TEXT NOT NULL," +
+					"color INTEGER NOT NULL," +
+					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
+			);
+
 			if(SableCompat.LOADED){
 				stmt.execute(
 					"CREATE TABLE IF NOT EXISTS sub_levels (" +
@@ -403,6 +412,21 @@ public class DatabaseManager {
 			// mail storage
 			inTransaction(DatabaseManager::migrateToV9);
 		}
+		if (current < 10) {
+			// the manager book's custom sub-tabs
+			inTransaction(DatabaseManager::migrateToV10);
+		}
+	}
+
+	// v10: custom sub-tabs of the manager book's Team section, a name filter plus a colour per tab.
+	private static void migrateToV10() throws SQLException {
+		execute("CREATE TABLE IF NOT EXISTS team_sub_tabs (" +
+			"id INTEGER PRIMARY KEY AUTOINCREMENT," +
+			"team_id TEXT NOT NULL," +
+			"name TEXT NOT NULL," +
+			"color INTEGER NOT NULL," +
+			"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)");
+		setSchemaVersion(10);
 	}
 
 	// v9: mail + per-recipient read/deleted state.

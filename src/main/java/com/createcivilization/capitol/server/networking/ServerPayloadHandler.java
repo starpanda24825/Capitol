@@ -44,6 +44,8 @@ import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage
 import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
+import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
+import com.createcivilization.capitol.common.data.TeamSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
 import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import com.createcivilization.capitol.common.managers.TeamDirectoryManager;
@@ -1097,6 +1099,42 @@ public class ServerPayloadHandler {
 	public static void handleRequestTeamDirectory(final C2SRequestTeamDirectory request, final IPayloadContext context) {
 		if (!RequestThrottle.allow(context.player().getUUID())) return;
 		TeamDirectoryManager.send(context.player().getUUID());
+	}
+
+	// Adds a custom sub-tab to the viewer's team after re-checking the name, colour and cap.
+	public static void handleCreateSubTab(final C2SCreateSubTab request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		String name = request.name() == null ? "" : request.name().trim();
+		if (name.isEmpty() || name.length() > TeamSubTab.MAX_NAME) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_name"));
+			return;
+		}
+		if (request.colour() < 0 || request.colour() >= TeamSubTab.COLOURS) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_colour"));
+			return;
+		}
+		List<TeamSubTab> existing = DatabaseManager.database.getTeamSubTabs(team);
+		if (existing.size() >= TeamSubTab.MAX_PER_TEAM) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.limit"));
+			return;
+		}
+		for (TeamSubTab tab : existing) {
+			if (tab.name().equalsIgnoreCase(name)) {
+				sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.duplicate"));
+				return;
+			}
+		}
+		if (DatabaseManager.database.createTeamSubTab(team, name, request.colour()) == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.limit"));
+			return;
+		}
+		sendAction(player, RoleManager.Check.allow());
+		TeamDirectoryManager.broadcast(team);
 	}
 
 	public static void handleRevokeInvite(final C2SRevokeInvite request, final IPayloadContext context) {

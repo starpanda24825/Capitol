@@ -86,7 +86,6 @@ public class AutoClaimEvents {
 	@SubscribeEvent
 	public static void onPlayerDisconnect(PlayerEvent.PlayerLoggedOutEvent e) {
 		removeAutoClaimer(e.getEntity()); // avoids a small memory leak, also disables auto-claiming on disconnect
-		com.createcivilization.capitol.server.networking.BookViewers.clear(e.getEntity().getUUID());
 		com.createcivilization.capitol.server.networking.RequestThrottle.clear(e.getEntity().getUUID());
 	}
 

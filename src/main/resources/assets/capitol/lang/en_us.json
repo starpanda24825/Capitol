@@ -37,6 +37,16 @@
 	"screen.capitol.book.title":                   "Capitol Manager",
 	"screen.capitol.book.no_team":                  "You are not in a team",
 	"screen.capitol.book.search":                   "Search players...",
+	"screen.capitol.book.search_subclaims":         "Search sub-claims...",
+	"screen.capitol.book.subtab.all":               "Team Sub-Claims",
+	"screen.capitol.book.subtab.mine":              "My Sub-Claims",
+	"screen.capitol.book.subtab.add":               "New sub-tab",
+	"screen.capitol.book.subtab.empty":             "No sub-claims to show",
+	"screen.capitol.book.subtab.dialog.title":      "New Sub-Tab",
+	"screen.capitol.book.subtab.dialog.name":       "Name...",
+	"screen.capitol.book.subtab.dialog.colour":     "Colour",
+	"screen.capitol.book.subtab.dialog.create":     "Add",
+	"screen.capitol.book.subtab.dialog.cancel":     "Cancel",
 
 	"screen.capitol.book.tab.team":                "Team",
 	"screen.capitol.book.tab.members":             "Members",
@@ -45,6 +55,11 @@
 	"screen.capitol.book.tab.subclaims":           "Sub-Claims",
 
 	"commands.capitol.capitol_block.invalid_naming": "That Capitol Block isn't awaiting a name",
+
+	"commands.capitol.subtab.invalid_name": "A sub-tab name must be 1 to 24 characters",
+	"commands.capitol.subtab.invalid_colour": "That is not one of the five sub-tab colours",
+	"commands.capitol.subtab.limit": "Your team already has its three custom sub-tabs",
+	"commands.capitol.subtab.duplicate": "Your team already has a sub-tab with that name",
 
 	"commands.capitol.not_in_team_error": "You are not in any team",
 	"commands.capitol.no_player_found": "There is no player called %s",

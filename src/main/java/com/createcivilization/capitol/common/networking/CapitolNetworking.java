@@ -29,7 +29,6 @@ import com.createcivilization.capitol.common.networking.packets.C2SMoveRole;
 import com.createcivilization.capitol.common.networking.packets.C2SAssignRole;
 import com.createcivilization.capitol.common.networking.packets.C2SKickMember;
 import com.createcivilization.capitol.common.networking.packets.S2CActionResult;
-import com.createcivilization.capitol.common.networking.packets.S2CBookInvalidate;
 import com.createcivilization.capitol.common.networking.packets.C2STransferLeadership;
 import com.createcivilization.capitol.common.networking.packets.C2SLeaveTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestDisband;
@@ -53,6 +52,7 @@ import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
 import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
@@ -71,7 +71,7 @@ public class CapitolNetworking {
 
 	@SubscribeEvent
 	public static void register(final RegisterPayloadHandlersEvent event) {
-		final PayloadRegistrar registrar = event.registrar("5");
+		final PayloadRegistrar registrar = event.registrar("6");
 
 		registrar.playToClient(
 			S2CChunkData.TYPE,
@@ -281,12 +281,6 @@ public class CapitolNetworking {
 			new MainThreadPayloadHandler<>(ClientPayloadHandler::actionResultHandler)
 		);
 
-		registrar.playToClient(
-			S2CBookInvalidate.TYPE,
-			S2CBookInvalidate.STREAM_CODEC,
-			new MainThreadPayloadHandler<>(ClientPayloadHandler::bookInvalidateHandler)
-		);
-
 		registrar.playToServer(
 			C2STransferLeadership.TYPE,
 			C2STransferLeadership.STREAM_CODEC,
@@ -435,6 +429,12 @@ public class CapitolNetworking {
 			S2COpenManagerBook.TYPE,
 			S2COpenManagerBook.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ClientPayloadHandler::openManagerBookHandler)
+		);
+
+		registrar.playToServer(
+			C2SCreateSubTab.TYPE,
+			C2SCreateSubTab.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleCreateSubTab)
 		);
 	}
 

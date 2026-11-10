@@ -165,7 +165,7 @@ public abstract class TextInputInteractable implements Interactable.BlitInteract
 		// the character itself comes from vanilla's charTyped path; glfwGetKeyName wouldn't give
 		// us spaces or symbols, so nothing here is appended from a key press
 		if (isHidden() || !isActive()) return;
-		if (value.length() >= MAX_LENGTH) return;
+		if (value.length() >= maxLength) return;
 		if (!isActive()) return;
 		if (character == '\n' || character == '\r' || character == '\t') return;
 		if (Character.isISOControl(character)) return;

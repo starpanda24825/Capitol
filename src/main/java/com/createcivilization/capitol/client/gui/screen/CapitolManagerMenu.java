@@ -7,9 +7,15 @@ import com.createcivilization.capitol.client.gui.base.BookScreen;
 import com.createcivilization.capitol.client.gui.base.Interactable;
 import com.createcivilization.capitol.client.gui.interactables.TextInputInteractable;
 import com.createcivilization.capitol.client.networking.ClientBookState;
+import com.createcivilization.capitol.client.networking.ClientSubClaimCache;
 import com.createcivilization.capitol.client.networking.ClientTeamDirectoryCache;
 import com.createcivilization.capitol.common.data.Permission;
+import com.createcivilization.capitol.common.data.SubClaimSummary;
+import com.createcivilization.capitol.common.data.TeamSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
+import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -20,7 +26,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -103,8 +111,8 @@ public class CapitolManagerMenu extends BookScreen {
 	private static final int BLANK_V = 242;
 
 	//how the horizontal ribbon is cut from the texture sheet
-	private static Asset.Blit teamBar() {
-		return SHEET.blit(BAR_U, BAR_V + BAR_PITCH * Section.TEAM.colour(), BAR_WIDTH, BAR_HEIGHT)
+	private static Asset.Blit bar(int colour) {
+		return SHEET.blit(BAR_U, BAR_V + BAR_PITCH * colour, BAR_WIDTH, BAR_HEIGHT)
 			.stretchedTo(ROW_WIDTH, BAR_HEIGHT);
 	}
 
@@ -114,10 +122,45 @@ public class CapitolManagerMenu extends BookScreen {
 	}
 
 	// How the ribbon extends when the mouse is hovering over it.
-	private static void rowBlit(GuiGraphics guiGraphics, int x, int y, boolean hovered) {
-		Asset.Blit bar = teamBar();
+	private static void rowBlit(GuiGraphics guiGraphics, int x, int y, boolean hovered, int colour) {
+		Asset.Blit bar = bar(colour);
 		if (hovered) bar.renderBlit(guiGraphics, x, y, ROW_WIDTH + HOVER_DROP, BAR_HEIGHT);
 		else bar.renderBlit(guiGraphics, x, y);
+	}
+
+	//the Team section's sub-tabs
+
+	// The corner piece, cut once per colour.
+	private static final int CAP_U = 217;
+	private static final int CAP_V = 130;
+	private static final int CAP_ART_W = 20;
+	private static final int CAP_ART_PITCH = 14;
+	private static final int CAP_WIDTH = 29;
+	private static final int CAP_HEIGHT = 13;
+	private static final int CAP_STEP = 22;		// How far apart two tabs start.
+	private static final int CAP_LIFT = 3;		// How far an open tab extends
+	// The two default tabs, black for team's and gold for your own.
+	private static final int SUBTAB_ALL = 0;
+	private static final int SUBTAB_MINE = 1;
+	private static final int CAP_BLACK = 3;
+	private static final int CAP_YELLOW = 4;
+	private static final int PLUS_WIDTH = 13;		// The add button at the edge of the ribbon.
+	private static final int PLUS_GAP = 8;
+
+	//the add-sub-tab dialog 
+
+	private static final int DIALOG_WIDTH = 121;
+	private static final int DIALOG_HEIGHT = 102;
+	private static final int DIALOG_TOP = 62;		// Just above centre, so its a page of its own laid over the manager
+
+	private static final int SWATCH_STEP = 23;
+	private static final int BUTTON_HEIGHT = 14;
+	private static final int DIALOG_DIM = 0x80000000;	// aesthetic dimming of the manager behind the dialog panel, to keep it in focus
+
+	// A cap piece of one colour, drawn at the given width
+	private static Asset.Blit cap(int colour, int width) {
+		return SHEET.blit(CAP_U, CAP_V + CAP_ART_PITCH * colour, CAP_ART_W, CAP_HEIGHT)
+			.stretchedTo(width, CAP_HEIGHT);
 	}
 
 	//the sections
@@ -173,9 +216,23 @@ public class CapitolManagerMenu extends BookScreen {
 	private static Section lastOpen = Section.TEAM;
 
 	private final List<Section> sections;
-	private final SearchField search = new SearchField();
+	private final SearchField search = new SearchField("screen.capitol.book.search");
+	private final SearchField subClaimSearch = new SearchField("screen.capitol.book.search_subclaims");
 	private Section selected;
 	private boolean membersRequested;
+	private int openSubTab = -1; //which sub-tab is open, or -1 for member list. 0 is team's sub-claims, 1 is player's own, and 2 upwards are custom tabs.
+	/**
+	 * The list the open tab last asked the server for, as "who|name filter": the team's list and the
+	 * player's own are two different reads, and a custom tab narrows the team's by its name. Will change later.
+	 */
+	@Nullable
+	private String requestedSubClaimList;
+	// How many custom tabs the row was built for, so one arriving from the server can add itself.
+	private int builtTabCount = -1;
+	private boolean dialogOpen;
+	private int dialogColour = CAP_BLACK;
+	@Nullable
+	private DialogNameField dialogName;
 
 	public CapitolManagerMenu() {
 		super(Component.translatable("screen.capitol.book.title"));
@@ -184,6 +241,8 @@ public class CapitolManagerMenu extends BookScreen {
 			? Arrays.stream(Section.values()).filter(section -> section.visible(permissions)).toList()
 			: List.of();
 		this.selected = sections.contains(lastOpen) ? lastOpen : sections.isEmpty() ? null : sections.getFirst();
+		// the sub-claim section opens on the team's own list, so it is never a bare page on the first open
+		if (this.selected == Section.SUBCLAIMS) this.openSubTab = SUBTAB_ALL;
 	}
 
 	/*
@@ -216,16 +275,105 @@ public class CapitolManagerMenu extends BookScreen {
 	private void rebuild() {
 		getInteractableList().clear();
 		for (Section section : sections) addInteractable(new RibbonTab(section));
-		if (selected != Section.TEAM) return;
-		search.init(this);
-		addInteractable(search);
+		if (selected == Section.SUBCLAIMS) {
+			builtTabCount = subTabs().size();
+			addSubTabs();
+			requestSubClaims();
+			if (dialogOpen) {
+				// the dialog is modal while it is up, so nothing else on the page takes a click
+				addInteractable(new AddDialog());
+				if (dialogName != null) {
+					dialogName.init(this);
+					addInteractable(dialogName);
+				}
+				return;
+			}
+		} else if (selected != Section.TEAM) {
+			return;
+		}
+		SearchField field = searchField();
+		field.init(this);
+		addInteractable(field);
+	}
+
+	// builds the sub-tab row, and the add chip while the team has room for one
+	private void addSubTabs() {
+		List<TeamSubTab> customs = subTabs();
+		List<Interactable> row = new ArrayList<>();
+		if (plusIndex() >= 0) row.add(new TabPlus(plusIndex()));
+		for (int i = 0; i < customs.size(); i++) row.add(new SubTabPiece(2 + i));
+		row.add(new SubTabPiece(SUBTAB_MINE));
+		row.add(new SubTabPiece(SUBTAB_ALL));
+		// left-most last, so no piece can end up drawn over the tab to its right
+		row.sort(Comparator.comparingInt(Interactable::getX).reversed());
+		row.forEach(this::addInteractable);
+	}
+
+	// opens a sub-tab, or closes it when it is the one already open
+	private void selectSubTab(int index) {
+		openSubTab = openSubTab == index ? -1 : index;
+		// a filter typed for one list must not thin the next one out
+		search.setValue("");
+		subClaimSearch.setValue("");
+		rebuild();
+	}
+
+	// the field filtering whichever list is showing
+	private SearchField searchField() {
+		return selected == Section.SUBCLAIMS ? subClaimSearch : search;
+	}
+
+	// The add button on the ribbon, or -1 while they still have all three customs.
+	private int plusIndex() {
+		int customs = subTabs().size();
+		return customs < TeamSubTab.MAX_PER_TEAM ? customs + 2 : -1;
+	}
+
+
+	private void openDialog() {
+		dialogOpen = true;
+		dialogColour = CAP_BLACK;
+		dialogName = new DialogNameField();
+		rebuild();
+	}
+
+	private void closeDialog() {
+		dialogOpen = false;
+		dialogName = null;
+		rebuild();
+	}
+
+	// asks for the open tab's list, and only again when the list itself changes
+	private void requestSubClaims() {
+		if (openSubTab < 0) return;
+		boolean mine = openSubTab == SUBTAB_MINE;
+		TeamSubTab custom = customTab(openSubTab);
+		String query = custom == null ? "" : custom.name();
+		String key = (mine ? "mine|" : "team|") + query;
+		if (key.equals(requestedSubClaimList)) return;
+		requestedSubClaimList = key;
+		UUID self = Minecraft.getInstance().player == null ? null : Minecraft.getInstance().player.getUUID();
+		if (mine && self == null) return;
+		PacketDistributor.sendToServer(new C2SRequestSubClaims(0, !mine, mine ? self.toString() : "", query));
 	}
 
 	private void select(Section section) {
 		if (section == selected) return;
 		this.selected = section;
 		lastOpen = section;
+		// the sub-claim section lands on the team's list rather than a bare page of tabs
+		if (section == Section.SUBCLAIMS && openSubTab < 0) openSubTab = SUBTAB_ALL;
 		rebuild();
+	}
+
+	// Escape closes the dialog first, second closes the manager
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (dialogOpen && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+			closeDialog();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
@@ -238,18 +386,46 @@ public class CapitolManagerMenu extends BookScreen {
 				this.topPos + PAGE_HEIGHT / 2, LABEL_INK, true);
 		} else if (selected == Section.TEAM) {
 			renderMembers(guiGraphics, rowAt(mouseX, mouseY));
+		} else if (selected == Section.SUBCLAIMS) {
+			// a new tab arrives from the server, so the row follows the directory
+			if (subTabs().size() != builtTabCount) rebuild();
+			if (dialogOpen) return;  // the dialog is modal: the page behind it stays bare
+			renderSubClaims(guiGraphics, rowAt(mouseX, mouseY));
 		}
 	}
 
 	//the team section
 
-	// The search bar sits clear of the longest ribbon; the rows start just under it.
-	private static int searchY() {
+	// clear of the longest ribbon; the search bar and rows start just under the sub-tabs
+	private static int subTabY() {
 		return LARGE_H + 7;
 	}
 
-	private static int listY() {
-		return searchY() + BAR_HEIGHT + ROW_GAP + 1;
+	/** The Team section has no tab row above its field, so its bar and rows sit a row higher. */
+	private static int teamSearchY() {
+		return LARGE_H + 7;
+	}
+
+	private static int teamListY() {
+		return teamSearchY() + BAR_HEIGHT + ROW_GAP + 1;
+	}
+
+	/** The sub-claim section's own field, one row under its corner tabs, and its rows under that. */
+	private static int subClaimSearchY() {
+		return subTabY() + CAP_HEIGHT + ROW_GAP;
+	}
+
+	private static int subClaimListY() {
+		return subClaimSearchY() + BAR_HEIGHT + ROW_GAP + 1;
+	}
+
+	/** Where the open section's field sits, and where its rows start. */
+	private int searchY() {
+		return selected == Section.SUBCLAIMS ? subClaimSearchY() : teamSearchY();
+	}
+
+	private int listY() {
+		return selected == Section.SUBCLAIMS ? subClaimListY() : teamListY();
 	}
 
 	private int rowAt(double mouseX, double mouseY) {
@@ -257,23 +433,70 @@ public class CapitolManagerMenu extends BookScreen {
 		if (mouseX < x || mouseX >= x + ROW_WIDTH + HOVER_DROP) return -1;
 		int bottom = this.topPos + PAGE_HEIGHT - PAGE_INSET;
 		int y = this.topPos + listY();
-		List<S2CTeamDirectory.MemberRow> rows = members();
-		for (int i = 0; i < rows.size() && y + BAR_HEIGHT <= bottom; i++, y += BAR_PITCH) {
+		for (int i = 0; i < rowCount() && y + BAR_HEIGHT <= bottom; i++, y += BAR_PITCH) {
 			if (mouseY >= y && mouseY < y + BAR_HEIGHT) return i;
 		}
 		return -1;
 	}
 
-	// Everyone in the team, alphabetical and narrowed by whatever is typed in the search bar.
+	// the team's members, alphabetical and narrowed by the search field
 	private List<S2CTeamDirectory.MemberRow> members() {
 		S2CTeamDirectory directory = ClientTeamDirectoryCache.directory();
 		if (directory == null) return List.of();
 
-		String query = search.getValue().trim().toLowerCase(Locale.ROOT);
+		String query = searchField().getValue().trim().toLowerCase(Locale.ROOT);
 		return directory.members().stream()
 			.filter(member -> query.isEmpty() || member.name().toLowerCase(Locale.ROOT).contains(query))
 			.sorted(Comparator.comparing(member -> member.name().toLowerCase(Locale.ROOT)))
 			.toList();
+	}
+
+	// the team's custom sub-tabs, in the server's order
+	private List<TeamSubTab> subTabs() {
+		S2CTeamDirectory directory = ClientTeamDirectoryCache.directory();
+		return directory == null ? List.of() : directory.subTabs();
+	}
+
+	// the custom tab an index names, or null for the two defaults
+	@Nullable
+	private TeamSubTab customTab(int index) {
+		List<TeamSubTab> tabs = subTabs();
+		int custom = index - 2;
+		return custom >= 0 && custom < tabs.size() ? tabs.get(custom) : null;
+	}
+
+	// the colour a sub-tab wears
+	private int subTabColour(int index) {
+		if (index == SUBTAB_ALL) return CAP_BLACK;
+		if (index == SUBTAB_MINE) return CAP_YELLOW;
+		TeamSubTab tab = customTab(index);
+		return tab == null ? CAP_BLACK : tab.colour();
+	}
+
+	// the open tab's rows, held to the page's scope and narrowed like the members
+	private List<SubClaimSummary> subClaims() {
+		// no tab open: the section shows its row of tabs and nothing else
+		if (openSubTab < 0) return List.of();
+		S2CSubClaimsPage page = ClientSubClaimCache.lastPage();
+		if (page == null) return List.of();
+		List<SubClaimSummary> scoped = page.subClaims();
+		if (openSubTab == SUBTAB_MINE) {
+			UUID self = Minecraft.getInstance().player == null ? null : Minecraft.getInstance().player.getUUID();
+			scoped = scoped.stream().filter(row -> self != null && self.equals(row.ownerUuid())).toList();
+		} else if (customTab(openSubTab) instanceof TeamSubTab tab) {
+			scoped = scoped.stream().filter(row -> tab.matches(row.name())).toList();
+		}
+
+		String query = searchField().getValue().trim().toLowerCase(Locale.ROOT);
+		return scoped.stream()
+			.filter(row -> query.isEmpty() || row.name().toLowerCase(Locale.ROOT).contains(query))
+			.sorted(Comparator.comparing(row -> row.name().toLowerCase(Locale.ROOT)))
+			.toList();
+	}
+
+	// how many rows the open list has
+	private int rowCount() {
+		return selected == Section.SUBCLAIMS ? subClaims().size() : members().size();
 	}
 
 	private void renderMembers(GuiGraphics guiGraphics, int hovered) {
@@ -283,15 +506,39 @@ public class CapitolManagerMenu extends BookScreen {
 		List<S2CTeamDirectory.MemberRow> rows = members();
 
 		for (int i = 0; i < rows.size(); i++, y += BAR_PITCH) {
-			if (y + BAR_HEIGHT > bottom) break;  // ran out of page, the rest is for a later page of the list
-			rowBlit(guiGraphics, x, y, i == hovered);
+			if (y + BAR_HEIGHT > bottom) break;  // ran out of page, the rest is a later page
+			rowBlit(guiGraphics, x, y, i == hovered, Section.TEAM.colour());
 			renderMember(guiGraphics, rows.get(i), x, y);
 		}
 	}
 
-	// horizontal ribbon: player skin face and name, centred inside its ribbon.
+	// a sub-claim tab's list: one name per row, in the tab's colour
+	private void renderSubClaims(GuiGraphics guiGraphics, int hovered) {
+		int x = rowLeft();
+		int bottom = this.topPos + PAGE_HEIGHT - PAGE_INSET;
+		int y = this.topPos + listY();
+		List<SubClaimSummary> rows = subClaims();
+
+		if (rows.isEmpty()) {
+			Component note = Component.translatable("screen.capitol.book.subtab.empty");
+			guiGraphics.drawString(this.font, note, x + (ROW_WIDTH - this.font.width(note)) / 2,
+				y, SEARCH_INK, false);
+			return;
+		}
+
+		for (int i = 0; i < rows.size(); i++, y += BAR_PITCH) {
+			if (y + BAR_HEIGHT > bottom) break;  // ran out of page, the rest is a later page
+			rowBlit(guiGraphics, x, y, i == hovered, subTabColour(openSubTab));
+			// centred on the resting row, so hovering moves the bar and not the text
+			String name = this.font.plainSubstrByWidth(rows.get(i).name(), ROW_WIDTH - 2 * ROW_GAP - 8);
+			guiGraphics.drawString(this.font, name, x + (ROW_WIDTH - this.font.width(name)) / 2,
+				y + (BAR_HEIGHT - this.font.lineHeight) / 2 + 1, LABEL_INK, true);
+		}
+	}
+
+	// face and name, centred in the row
 	private void renderMember(GuiGraphics guiGraphics, S2CTeamDirectory.MemberRow member, int x, int y) {
-		// centred on the resting row, so the 3px the row reaches into on hover moves the bar only
+		// centred on the resting row, so hovering moves the bar and not the text
 		String name = this.font.plainSubstrByWidth(member.name(), ROW_WIDTH - FACE - 2 * ROW_GAP - 8);
 		int content = FACE + ROW_GAP + this.font.width(name);
 		int faceX = x + (ROW_WIDTH - content) / 2;
@@ -301,7 +548,7 @@ public class CapitolManagerMenu extends BookScreen {
 		guiGraphics.drawString(this.font, name, faceX + FACE + ROW_GAP, textY, LABEL_INK, true);
 	}
 
-	// The account's own skin when the client has it, and a blank when it does not.
+	// the account's skin, or a blank when the client has none
 	private static void renderFace(GuiGraphics guiGraphics, UUID player, int x, int y) {
 		PlayerInfo info = Minecraft.getInstance().getConnection() == null
 			? null
@@ -317,8 +564,8 @@ public class CapitolManagerMenu extends BookScreen {
 	// The team section's search bar
 	private final class SearchField extends TextInputInteractable {
 
-		private SearchField() {
-			super(SHEET.blit(BLANK_U, BLANK_V, ROW_WIDTH, BAR_HEIGHT), Component.translatable("screen.capitol.book.search"),
+		private SearchField(String placeholderKey) {
+			super(SHEET.blit(BLANK_U, BLANK_V, ROW_WIDTH, BAR_HEIGHT), Component.translatable(placeholderKey),
 				0, 0, null, SEARCH_INK, true);
 		}
 
@@ -342,10 +589,387 @@ public class CapitolManagerMenu extends BookScreen {
 		public void render(GuiGraphics guiGraphics) {
 			int x = getX();
 			int y = getY();
-			// a one-pixel ink frame around a lighter parchment, so it sits in the page's theme
+			// a one-pixel ink frame around a lighter parchment
 			guiGraphics.fill(x, y, x + ROW_WIDTH, y + BAR_HEIGHT, SEARCH_EDGE);
 			guiGraphics.fill(x + 1, y + 1, x + ROW_WIDTH - 1, y + BAR_HEIGHT - 1, SEARCH_FILL);
 			super.render(guiGraphics);
+		}
+	}
+
+	//sub-tabs
+
+	// one sub tab, lifted while it is open or hovered
+	private final class SubTabPiece implements Interactable {
+
+		private final int index;
+		private boolean hovered;
+
+		private SubTabPiece(int index) {
+			this.index = index;
+		}
+
+		private boolean isOpen() {
+			return index == openSubTab;
+		}
+
+		// the cap's flat end sits against the page, so it only reaches upward
+		private boolean isLifted() {
+			return isOpen() || hovered;
+		}
+
+		@Override
+		public int getX() {
+			return rowLeft() + index * CAP_STEP;
+		}
+
+		@Override
+		public int getY() {
+			return topPos + subTabY();
+		}
+
+		@Override
+		public void setX(int x) {
+		}
+
+		@Override
+		public void setY(int y) {
+		}
+
+		// the row is rebuilt, never hidden, so there is no hidden state
+		@Override
+		public void hide() {
+		}
+
+		@Override
+		public void show() {
+		}
+
+		@Override
+		public boolean isHidden() {
+			return false;
+		}
+
+		// tabs overlap by 7px, so the box stops at the lap and no pixel answers for two
+		@Override
+		public BoundingBox getBoundingBox() {
+			int x = getX();
+			int y = getY();
+			int left = index == SUBTAB_ALL ? x : x + (CAP_WIDTH - CAP_STEP);
+			return new BoundingBox(left, y - CAP_LIFT, x + CAP_WIDTH, y + CAP_HEIGHT);
+		}
+
+		@Override
+		public void render(GuiGraphics guiGraphics) {
+			Asset.Blit art = cap(subTabColour(index), CAP_WIDTH);
+			if (isLifted()) art.renderBlit(guiGraphics, getX(), getY() - CAP_LIFT, CAP_WIDTH, CAP_HEIGHT + CAP_LIFT);
+			else art.renderBlit(guiGraphics, getX(), getY());
+		}
+
+		@Override
+		public void hovered(int x, int y) {
+			if (dialogOpen) return;
+			hovered = true;
+		}
+
+		@Override
+		public void hoverLeave(int x, int y) {
+			hovered = false;
+		}
+
+		@Override
+		public Interactable clickStart(int x, int y) {
+			if (dialogOpen) return null;
+			selectSubTab(index);
+			return this;
+		}
+
+		@Override
+		public @Nullable Component tooltip() {
+			if (dialogOpen) return null;
+			if (index == SUBTAB_ALL) return Component.translatable("screen.capitol.book.subtab.all");
+			if (index == SUBTAB_MINE) return Component.translatable("screen.capitol.book.subtab.mine");
+			TeamSubTab tab = customTab(index);
+			return tab == null ? null : Component.literal(tab.name());
+		}
+	}
+
+	// the add chip at the row's end; it opens the add-sub-tab dialog
+	private final class TabPlus implements Interactable {
+
+		private final int index;
+		private boolean hovered;
+
+		private TabPlus(int index) {
+			this.index = index;
+		}
+
+		@Override
+		public int getX() {
+			return rowLeft() + index * CAP_STEP + PLUS_GAP;
+		}
+
+		@Override
+		public int getY() {
+			return topPos + subTabY() + (hovered ? -CAP_LIFT : 0);
+		}
+
+		@Override
+		public void setX(int x) {
+		}
+
+		@Override
+		public void setY(int y) {
+		}
+
+		// the row is rebuilt, never hidden, so there is no hidden state
+		@Override
+		public void hide() {
+		}
+
+		@Override
+		public void show() {
+		}
+
+		@Override
+		public boolean isHidden() {
+			return false;
+		}
+
+		// the box holds still while the chip lifts
+		@Override
+		public BoundingBox getBoundingBox() {
+			int x = getX();
+			int y = topPos + subTabY();
+			return new BoundingBox(x, y - CAP_LIFT, x + PLUS_WIDTH, y + CAP_HEIGHT);
+		}
+
+		@Override
+		public void render(GuiGraphics guiGraphics) {
+			int x = getX();
+			int y = getY();
+			guiGraphics.fill(x, y, x + PLUS_WIDTH, y + CAP_HEIGHT, SEARCH_EDGE);
+			guiGraphics.fill(x + 1, y + 1, x + PLUS_WIDTH - 1, y + CAP_HEIGHT - 1, SEARCH_FILL);
+			// the plus itself: two ink bars crossing at the centre
+			int centreX = x + PLUS_WIDTH / 2;
+			int centreY = y + CAP_HEIGHT / 2;
+			guiGraphics.fill(centreX - 3, centreY, centreX + 4, centreY + 1, SEARCH_INK);
+			guiGraphics.fill(centreX, centreY - 3, centreX + 1, centreY + 4, SEARCH_INK);
+		}
+
+		@Override
+		public void hovered(int x, int y) {
+			if (dialogOpen) return;
+			hovered = true;
+		}
+
+		@Override
+		public void hoverLeave(int x, int y) {
+			hovered = false;
+		}
+
+		@Override
+		public Interactable clickStart(int x, int y) {
+			if (dialogOpen) return null;
+			openDialog();
+			return this;
+		}
+
+		@Override
+		public @Nullable Component tooltip() {
+			return dialogOpen ? null : Component.translatable("screen.capitol.book.subtab.add");
+		}
+	}
+
+	// --- the add-sub-tab dialog ---------------------------------------------------------------
+
+	// the add-sub-tab dialog; while it is up it covers the page and takes every click
+	private final class AddDialog implements Interactable {
+
+		private int panelX() {
+			return leftPos + (PAGE_WIDTH - DIALOG_WIDTH) / 2;
+		}
+
+		private int panelY() {
+			return topPos + DIALOG_TOP;
+		}
+
+		private int fieldX() {
+			return panelX() + 4;
+		}
+
+		private int fieldY() {
+			return panelY() + 20;
+		}
+
+		private int fieldWidth() {
+			return DIALOG_WIDTH - 8;
+		}
+
+		private int swatchX(int colour) {
+			return panelX() + 4 + colour * SWATCH_STEP;
+		}
+
+		private int swatchY() {
+			return panelY() + 52;
+		}
+
+		private int buttonWidth() {
+			return (DIALOG_WIDTH - 12) / 2;
+		}
+
+		private int buttonY() {
+			return panelY() + 80;
+		}
+
+		// Add only goes live once a name is typed
+		private boolean ready() {
+			return dialogName != null && !dialogName.getValue().trim().isEmpty();
+		}
+
+		@Override
+		public int getX() {
+			return leftPos;
+		}
+
+		@Override
+		public int getY() {
+			return topPos;
+		}
+
+		@Override
+		public void setX(int x) {
+		}
+
+		@Override
+		public void setY(int y) {
+		}
+
+		// the dialog is added and dropped with its flag
+		@Override
+		public void hide() {
+		}
+
+		@Override
+		public void show() {
+		}
+
+		@Override
+		public boolean isHidden() {
+			return false;
+		}
+
+		// the whole page, so a click off the panel cancels
+		@Override
+		public BoundingBox getBoundingBox() {
+			return new BoundingBox(leftPos, topPos, leftPos + PAGE_WIDTH, topPos + PAGE_HEIGHT);
+		}
+
+		@Override
+		public void render(GuiGraphics guiGraphics) {
+			guiGraphics.fill(leftPos, topPos, leftPos + PAGE_WIDTH, topPos + PAGE_HEIGHT, DIALOG_DIM);
+			int x = panelX();
+			int y = panelY();
+			guiGraphics.fill(x, y, x + DIALOG_WIDTH, y + DIALOG_HEIGHT, SEARCH_EDGE);
+			guiGraphics.fill(x + 1, y + 1, x + DIALOG_WIDTH - 1, y + DIALOG_HEIGHT - 1, SEARCH_FILL);
+
+			Component title = Component.translatable("screen.capitol.book.subtab.dialog.title");
+			guiGraphics.drawString(font, title, x + (DIALOG_WIDTH - font.width(title)) / 2, y + 6, SEARCH_INK, false);
+
+			// the 1px ring framing the name field
+			guiGraphics.fill(fieldX() - 1, fieldY() - 1, fieldX() + fieldWidth() + 1, fieldY() + BAR_HEIGHT + 1, SEARCH_EDGE);
+
+			Component colourLabel = Component.translatable("screen.capitol.book.subtab.dialog.colour");
+			guiGraphics.drawString(font, colourLabel, x + 4, y + 40, SEARCH_INK, false);
+
+			for (int colour = 0; colour < TeamSubTab.COLOURS; colour++) {
+				int chipX = swatchX(colour);
+				int chipY = swatchY();
+				boolean chosen = colour == dialogColour;
+				int top = chosen ? chipY - CAP_LIFT : chipY;
+				// the chosen colour is ringed and lifted, so it reads as the live one
+				if (chosen) guiGraphics.fill(chipX - 1, top - 1, chipX + CAP_ART_W + 1, chipY + CAP_HEIGHT + 1, SEARCH_INK);
+				cap(colour, CAP_ART_W).renderBlit(guiGraphics, chipX, top);
+			}
+
+			drawDialogButton(guiGraphics, x + 4, buttonWidth(),
+				Component.translatable("screen.capitol.book.subtab.dialog.create"), ready());
+			drawDialogButton(guiGraphics, x + 8 + buttonWidth(), buttonWidth(),
+				Component.translatable("screen.capitol.book.subtab.dialog.cancel"), true);
+		}
+
+		// a paper chip with a centred label; a chip out of season is left pale
+		private void drawDialogButton(GuiGraphics guiGraphics, int x, int width, Component label, boolean live) {
+			int y = buttonY();
+			guiGraphics.fill(x, y, x + width, y + BUTTON_HEIGHT, SEARCH_EDGE);
+			guiGraphics.fill(x + 1, y + 1, x + width - 1, y + BUTTON_HEIGHT - 1, live ? SEARCH_FILL : 0xFFE4D9BE);
+			guiGraphics.drawString(font, label, x + (width - font.width(label)) / 2,
+				y + (BUTTON_HEIGHT - font.lineHeight) / 2 + 1, live ? SEARCH_INK : 0xFF8A8578, false);
+		}
+
+		private boolean inside(int x, int y, int boxX, int boxY, int width, int height) {
+			return x >= boxX && x < boxX + width && y >= boxY && y < boxY + height;
+		}
+
+		@Override
+		public Interactable clickStart(int x, int y) {
+			int px = panelX();
+			int py = panelY();
+			if (x < px || x >= px + DIALOG_WIDTH || y < py || y >= py + DIALOG_HEIGHT) {
+				// a click off the panel is a cancel
+				closeDialog();
+				return this;
+			}
+			for (int colour = 0; colour < TeamSubTab.COLOURS; colour++) {
+				if (x >= swatchX(colour) && x < swatchX(colour) + CAP_ART_W
+					&& y >= swatchY() - CAP_LIFT && y < swatchY() + CAP_HEIGHT) {
+					dialogColour = colour;
+					return this;
+				}
+			}
+			if (inside(x, y, px + 4, buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
+				createSubTab();
+				return this;
+			}
+			if (inside(x, y, px + 8 + buttonWidth(), buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
+				closeDialog();
+				return this;
+			}
+			return this;  // on the panel but on nothing: the dialog keeps the click
+		}
+
+		private void createSubTab() {
+			if (!ready()) return;
+			// the server re-checks the name, the colour and the tab cap before storing any
+			PacketDistributor.sendToServer(new C2SCreateSubTab(dialogName.getValue().trim(), dialogColour));
+			closeDialog();
+		}
+	}
+
+	// the dialog's name field, sized to the panel
+	private final class DialogNameField extends TextInputInteractable {
+
+		private DialogNameField() {
+			super(SHEET.blit(BLANK_U, BLANK_V, ROW_WIDTH, BAR_HEIGHT).stretchedTo(DIALOG_WIDTH - 8, BAR_HEIGHT),
+				Component.translatable("screen.capitol.book.subtab.dialog.name"), 0, 0, null, SEARCH_INK, true);
+			maxLength(TeamSubTab.MAX_NAME);
+		}
+
+		@Override
+		public int getX() {
+			return leftPos + (PAGE_WIDTH - DIALOG_WIDTH) / 2 + 4;
+		}
+
+		@Override
+		public int getY() {
+			return topPos + DIALOG_TOP + 20;
+		}
+
+		@Override
+		public void setX(int x) {
+		}
+
+		@Override
+		public void setY(int y) {
 		}
 	}
 
@@ -362,7 +986,7 @@ public class CapitolManagerMenu extends BookScreen {
 			this.section = section;
 		}
 
-		// The open section wears the large ribbon, so it is already pulled out and needs no tooltip.
+		// the open section is already pulled out, so it needs no tooltip
 		private boolean isLarge() {
 			return section == selected;
 		}
@@ -392,8 +1016,7 @@ public class CapitolManagerMenu extends BookScreen {
 			return ribbon(section.colour(), isLarge());
 		}
 
-		// the box never moves, so hovering the ribbon's own top edge or the 3px it reaches into
-		// cannot flicker it; a lowered ribbon keeps that extra 3px under the cursor
+		// the box never moves, so hovering the ribbon or its extra 3px cannot flicker it
 		@Override
 		public BoundingBox getBoundingBox() {
 			int x = getX();
@@ -406,8 +1029,7 @@ public class CapitolManagerMenu extends BookScreen {
 			if (isHidden()) return;
 			Asset.Blit blit = getBlit();
 			if (isLowered()) {
-				// sliding the art bodily down would tear it off the page's top edge, so the ribbon
-				// keeps its top and grows the 3px downward instead
+				// the ribbon keeps its top and grows the 3px downward instead
 				blit.renderBlit(guiGraphics, getX(), topPos, RIBBON_WIDTH, blit.getBlitHeight() + HOVER_DROP);
 			} else {
 				blit.renderBlit(guiGraphics, getX(), topPos);
@@ -415,7 +1037,7 @@ public class CapitolManagerMenu extends BookScreen {
 			if (isLarge()) renderLabel(guiGraphics);
 		}
 
-		//The section's name, rotated to run bottom to top along the ribbon.
+		// the section's name, rotated to run bottom to top
 		private void renderLabel(GuiGraphics guiGraphics) {
 			Component label = section.title();
 			int width = font.width(label);
@@ -441,13 +1063,15 @@ public class CapitolManagerMenu extends BookScreen {
 		@Override
 		public Interactable clickStart(int x, int y) {
 			if (isHidden()) return null;
+			// the dialog covers the page, so a ribbon behind it is dead
+			if (dialogOpen) return null;
 			select(section);
 			return this;
 		}
 
 		@Override
 		public @Nullable Component tooltip() {
-			return isLarge() ? null : section.title();
+			return isLarge() || dialogOpen ? null : section.title();
 		}
 
 		@Override

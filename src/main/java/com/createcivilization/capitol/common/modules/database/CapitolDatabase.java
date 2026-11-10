@@ -2639,6 +2639,53 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
+	 * Returns a team's custom sub-tabs, oldest first, so the book's tab row keeps its order.
+	 *
+	 * @param team the team to query
+	 * @return list of 'TeamSubTab's (may be empty)
+	 */
+	public List<TeamSubTab> getTeamSubTabs(Team team) {
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"SELECT * FROM team_sub_tabs WHERE team_id = ? ORDER BY id ASC")) {
+			ps.setString(1, team.getId().toString());
+			try (ResultSet rs = ps.executeQuery()) {
+				List<TeamSubTab> tabs = new ArrayList<>();
+				while (rs.next()) tabs.add(new TeamSubTab(rs.getInt("id"), rs.getString("name"), rs.getInt("color")));
+				return tabs;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while getting team sub-tabs from database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
+	 * Inserts a team's sub-tab and returns it, or null when the team is already at
+	 * TeamSubTab.MAX_PER_TEAM tabs or already has one under that name.
+	 */
+	@Nullable
+	public TeamSubTab createTeamSubTab(Team team, String name, int colour) {
+		List<TeamSubTab> existing = getTeamSubTabs(team);
+		if (existing.size() >= TeamSubTab.MAX_PER_TEAM) return null;
+		for (TeamSubTab tab : existing) {
+			if (tab.name().equalsIgnoreCase(name)) return null;
+		}
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"INSERT INTO team_sub_tabs (team_id, name, color) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+			ps.setString(1, team.getId().toString());
+			ps.setString(2, name);
+			ps.setInt(3, colour);
+			ps.executeUpdate();
+			try (ResultSet keys = ps.getGeneratedKeys()) {
+				return keys.next() ? new TeamSubTab(keys.getInt(1), name, colour) : null;
+			}
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while creating team sub-tab in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
 	 * Returns the first sub-claim whose volume contains the given position, or null if none.
 	 *
 	 * @param dimension the dimension the position is in

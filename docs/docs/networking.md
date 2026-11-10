@@ -9,16 +9,19 @@ Chunk claim data is synced between server and client via NeoForge's networking l
 - **S2CSubClaimRemove** — server tells client a sub-claim was removed (delete command, or an unclaim that intersects it)
 - **C2SCreateSubClaim** — client submits a new sub-claim's name, dimension and box after the naming screen
 
-### Book / mail packets (registrar `5`)
+### Book / mail packets (registrar `6`)
 - **Role/member** — `C2SCreateRole`, `C2SEditRole`, `C2SSetRolePermissions`, `C2SDeleteRole`, `C2SMoveRole`, `C2SAssignRole`, `C2SKickMember`; the server answers any of them with `S2CActionResult(success, langKey, args)`.
 - **Lifecycle** — `C2STransferLeadership`, `C2SLeaveTeam`, `C2SRequestDisband`, `C2SRespondDisband`, `C2SCancelDisband`.
 - **Mail** — `C2SSendMail`, `C2SRequestInbox`, `C2SOpenMail`, `C2SMailAction` up; `S2CInboxPage`, `S2CMailBody`, `S2CMailUnread` down.
-- **Team directory** — `S2CTeamDirectory` is one read-only snapshot per team (members, roles, pending invites, capability flags) so the team screens need no per-tab round trips; `C2SRequestTeamDirectory` asks for it and `C2SRevokeInvite` cancels a pending invite.
+- **Team directory** — `S2CTeamDirectory` is one read-only snapshot per team (members, roles, pending invites, the team's custom sub-tabs, capability flags) so the team screens need no per-tab round trips; `C2SRequestTeamDirectory` asks for it and `C2SRevokeInvite` cancels a pending invite.
+- **Team sub-tabs** — `C2SCreateSubTab(name, colour)` adds one of the Team section's custom sub-tab filters. The server re-checks the name (1-24 chars), the colour (one of the sheet's five) and the team's three-tab cap, then broadcasts the refreshed directory to every member.
 - **Team editing** — `C2SEditTeam` saves the team's name/tag/description/colour; the server re-validates every field and `MANAGE_TEAM`.
 - **Manager book** — `C2SOpenBook` up, `S2COpenManagerBook` down (the viewer's team + effective permissions), opened by `/capitol menu` or the keybind; the sections read the shared snapshot below.
 
 ### Rate limiting
-Read requests (`C2SOpenBook`, `C2SRequestInbox`, `C2SRequestSubClaims`, `C2SRequestTeamDirectory`) pass through `RequestThrottle`, a per-player limit of 5/second, so a spammed request can't turn into packet spam.
+Read requests (`C2SOpenBook`, `C2SRequestInbox`, `C2SRequestSubClaims`, `C2SRequestTeamDirectory`) pass through `RequestThrottle`, a per-player limit of 5/second, so a spammed request can't turn into packet spam. The limiter is cleared on logout.
+
+Role, member and lifecycle changes refresh the manager by broadcasting `S2CTeamDirectory` to the team's online members (`TeamDirectoryManager.broadcast`), the same push the sub-tab flow uses, so an open manager re-reads without a per-viewer invalidation packet.
 
 ### Client Side
 - `ClientClaimCache` stores a `HashMap<ChunkPos, Team>` of all known claims

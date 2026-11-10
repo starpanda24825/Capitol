@@ -1,5 +1,6 @@
 package com.createcivilization.capitol.common.networking.packets;
 
+import com.createcivilization.capitol.common.data.TeamSubTab;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -17,6 +18,7 @@ import java.util.UUID;
  * re-validates every action a page sends back.
  */
 public record S2CTeamDirectory(List<MemberRow> members, List<RoleRow> roles, List<InviteRow> invites,
+								List<TeamSubTab> subTabs,
 								boolean canKick, boolean canAssignRoles, boolean canManageRoles, boolean canInvite,
 								int highestPosition, long permissions) implements CustomPacketPayload {
 
@@ -155,13 +157,17 @@ public record S2CTeamDirectory(List<MemberRow> members, List<RoleRow> roles, Lis
 			List<InviteRow> invites = new ArrayList<>(inviteCount);
 			for (int i = 0; i < inviteCount; i++) invites.add(InviteRow.STREAM_CODEC.decode(buffer));
 
+			int tabCount = ByteBufCodecs.VAR_INT.decode(buffer);
+			List<TeamSubTab> subTabs = new ArrayList<>(tabCount);
+			for (int i = 0; i < tabCount; i++) subTabs.add(TeamSubTab.STREAM_CODEC.decode(buffer));
+
 			boolean canKick = ByteBufCodecs.BOOL.decode(buffer);
 			boolean canAssignRoles = ByteBufCodecs.BOOL.decode(buffer);
 			boolean canManageRoles = ByteBufCodecs.BOOL.decode(buffer);
 			boolean canInvite = ByteBufCodecs.BOOL.decode(buffer);
 			int highestPosition = ByteBufCodecs.VAR_INT.decode(buffer);
 			long permissions = ByteBufCodecs.VAR_LONG.decode(buffer);
-			return new S2CTeamDirectory(members, roles, invites, canKick, canAssignRoles, canManageRoles, canInvite, highestPosition, permissions);
+			return new S2CTeamDirectory(members, roles, invites, subTabs, canKick, canAssignRoles, canManageRoles, canInvite, highestPosition, permissions);
 		}
 
 		@Override
@@ -174,6 +180,9 @@ public record S2CTeamDirectory(List<MemberRow> members, List<RoleRow> roles, Lis
 
 			ByteBufCodecs.VAR_INT.encode(buffer, value.invites().size());
 			for (InviteRow row : value.invites()) InviteRow.STREAM_CODEC.encode(buffer, row);
+
+			ByteBufCodecs.VAR_INT.encode(buffer, value.subTabs().size());
+			for (TeamSubTab tab : value.subTabs()) TeamSubTab.STREAM_CODEC.encode(buffer, tab);
 
 			ByteBufCodecs.BOOL.encode(buffer, value.canKick());
 			ByteBufCodecs.BOOL.encode(buffer, value.canAssignRoles());
