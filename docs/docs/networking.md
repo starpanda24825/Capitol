@@ -14,7 +14,7 @@ Chunk claim data is synced between server and client via NeoForge's networking l
 - **Lifecycle** — `C2STransferLeadership`, `C2SLeaveTeam`, `C2SRequestDisband`, `C2SRespondDisband`, `C2SCancelDisband`.
 - **Mail** — `C2SSendMail`, `C2SRequestInbox`, `C2SOpenMail`, `C2SMailAction` up; `S2CInboxPage`, `S2CMailBody`, `S2CMailUnread` down.
 - **Team directory** — `S2CTeamDirectory` is one read-only snapshot per team (members, roles, pending invites, the team's custom sub-tabs, capability flags) so the team screens need no per-tab round trips; `C2SRequestTeamDirectory` asks for it and `C2SRevokeInvite` cancels a pending invite.
-- **Team sub-tabs** — `C2SCreateSubTab(name, colour)` adds one of the Team section's custom sub-tab filters. The server re-checks the name (1-24 chars), the colour (one of the sheet's five) and the team's three-tab cap, then broadcasts the refreshed directory to every member.
+- **Team sub-tabs** — `C2SCreateSubTab(name, colour)` adds one of the Team section's custom sub-tab filters. The server re-checks the name (1-24 chars), the colour (one of the sheet's five) and the team's three-tab cap, then broadcasts the refreshed directory to every member. `C2SRenameSubTab(id, name, colour)` and `C2SDeleteSubTab(id)` edit or remove one: both are scoped to the sender's team (a forged id cannot touch another team) and rename keeps the same name/colour checks, before the same directory broadcast.
 - **Team editing** — `C2SEditTeam` saves the team's name/tag/description/colour; the server re-validates every field and `MANAGE_TEAM`.
 - **Manager book** — `C2SOpenBook` up, `S2COpenManagerBook` down (the viewer's team + effective permissions), opened by `/capitol menu` or the keybind; the sections read the shared snapshot below.
 

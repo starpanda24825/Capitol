@@ -53,6 +53,8 @@ import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDi
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
 import com.createcivilization.capitol.common.networking.packets.S2CTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SRenameSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
 import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
 import com.createcivilization.capitol.server.networking.ServerPayloadHandler;
@@ -435,6 +437,18 @@ public class CapitolNetworking {
 			C2SCreateSubTab.TYPE,
 			C2SCreateSubTab.STREAM_CODEC,
 			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleCreateSubTab)
+		);
+
+		registrar.playToServer(
+			C2SRenameSubTab.TYPE,
+			C2SRenameSubTab.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleRenameSubTab)
+		);
+
+		registrar.playToServer(
+			C2SDeleteSubTab.TYPE,
+			C2SDeleteSubTab.STREAM_CODEC,
+			new MainThreadPayloadHandler<>(ServerPayloadHandler::handleDeleteSubTab)
 		);
 	}
 

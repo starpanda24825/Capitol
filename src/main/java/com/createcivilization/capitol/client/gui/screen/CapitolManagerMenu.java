@@ -13,6 +13,8 @@ import com.createcivilization.capitol.common.data.Permission;
 import com.createcivilization.capitol.common.data.SubClaimSummary;
 import com.createcivilization.capitol.common.data.TeamSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SRenameSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestSubClaims;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.S2CSubClaimsPage;
@@ -139,11 +141,18 @@ public class CapitolManagerMenu extends BookScreen {
 	private static final int CAP_HEIGHT = 13;
 	private static final int CAP_STEP = 22;		// How far apart two tabs start.
 	private static final int CAP_LIFT = 3;		// How far an open tab extends
-	// The two default tabs, black for team's and gold for your own.
+	// The Sub-claim section's two default tabs, black for team's and gold for your own.
 	private static final int SUBTAB_ALL = 0;
 	private static final int SUBTAB_MINE = 1;
 	private static final int CAP_BLACK = 3;
 	private static final int CAP_YELLOW = 4;
+	// The Team section's own three tabs, shown only to viewers who may edit the team.
+	private static final int TEAM_TAB_MEMBERS = 0;
+	private static final int TEAM_TAB_TEAM = 1;
+	private static final int TEAM_TAB_CLAIMS = 2;
+	// The Mail section's two fixed tabs; fixed for everyone.
+	private static final int MAIL_TAB_INBOX = 0;
+	private static final int MAIL_TAB_SEND = 1;
 	private static final int PLUS_WIDTH = 13;		// The add button at the edge of the ribbon.
 	private static final int PLUS_GAP = 8;
 
@@ -152,7 +161,7 @@ public class CapitolManagerMenu extends BookScreen {
 	private static final int DIALOG_WIDTH = 121;
 	private static final int DIALOG_HEIGHT = 102;
 	private static final int DIALOG_TOP = 62;		// Just above centre, so its a page of its own laid over the manager
-
+	private static final int DIALOG_HEIGHT_EDIT = 120; //for Edit/Delete buttons on the dialog box pop-up.
 	private static final int SWATCH_STEP = 23;
 	private static final int BUTTON_HEIGHT = 14;
 	private static final int DIALOG_DIM = 0x80000000;	// aesthetic dimming of the manager behind the dialog panel, to keep it in focus
@@ -221,6 +230,9 @@ public class CapitolManagerMenu extends BookScreen {
 	private Section selected;
 	private boolean membersRequested;
 	private int openSubTab = -1; //which sub-tab is open, or -1 for member list. 0 is team's sub-claims, 1 is player's own, and 2 upwards are custom tabs.
+	private int teamSubTab = TEAM_TAB_MEMBERS;	// Which of the Team section's own three tabs is open; always one, and the member list by default.
+	private int mailSubTab = MAIL_TAB_INBOX;	// Which of the Mail section's two fixed tabs is open, or -1 for none
+
 	/**
 	 * The list the open tab last asked the server for, as "who|name filter": the team's list and the
 	 * player's own are two different reads, and a custom tab narrows the team's by its name. Will change later.
@@ -231,6 +243,11 @@ public class CapitolManagerMenu extends BookScreen {
 	private int builtTabCount = -1;
 	private boolean dialogOpen;
 	private int dialogColour = CAP_BLACK;
+	/** The custom tab the dialog edits, or null while it is making a new one. */
+	@Nullable
+	private TeamSubTab dialogTab;
+	/** True once the dialog has been asked to delete, so its buttons become the confirmation. */
+	private boolean deleteConfirm;
 	@Nullable
 	private DialogNameField dialogName;
 
@@ -275,22 +292,36 @@ public class CapitolManagerMenu extends BookScreen {
 	private void rebuild() {
 		getInteractableList().clear();
 		for (Section section : sections) addInteractable(new RibbonTab(section));
+
+		if (selected == Section.MAIL) {
+			addMailTabs();
+			return;
+		}
+
 		if (selected == Section.SUBCLAIMS) {
 			builtTabCount = subTabs().size();
 			addSubTabs();
 			requestSubClaims();
 			if (dialogOpen) {
-				// the dialog is modal while it is up, so nothing else on the page takes a click
-				addInteractable(new AddDialog());
-				if (dialogName != null) {
+				// the dialog is modal while it is up, so nothing else on the page takes a click. The field
+				// steps out for the delete confirmation, where only the two buttons belong.
+				addInteractable(new SubTabDialog());
+				if (dialogName != null && !deleteConfirm) {
 					dialogName.init(this);
 					addInteractable(dialogName);
 				}
 				return;
 			}
-		} else if (selected != Section.TEAM) {
+		} else if (selected == Section.TEAM) {
+			if (teamHasTabs()) {
+				addTeamTabs();
+				// only the member list holds rows and a field, so the other two tabs stop here
+				if (teamSubTab != TEAM_TAB_MEMBERS) return;
+			}
+		} else {
 			return;
 		}
+
 		SearchField field = searchField();
 		field.init(this);
 		addInteractable(field);
@@ -301,20 +332,74 @@ public class CapitolManagerMenu extends BookScreen {
 		List<TeamSubTab> customs = subTabs();
 		List<Interactable> row = new ArrayList<>();
 		if (plusIndex() >= 0) row.add(new TabPlus(plusIndex()));
-		for (int i = 0; i < customs.size(); i++) row.add(new SubTabPiece(2 + i));
-		row.add(new SubTabPiece(SUBTAB_MINE));
-		row.add(new SubTabPiece(SUBTAB_ALL));
+		for (int i = 0; i < customs.size(); i++) {
+			int index = 2 + i;
+			TeamSubTab tab = customs.get(i);
+			// a custom tab is the only editable kind, so it is the only one with a right-click action
+			row.add(new CornerTab(index, subTabColour(index), Component.literal(tab.name()),
+				index == openSubTab, () -> selectSubTab(index), () -> openEditDialog(index)));
+		}
+		row.add(new CornerTab(SUBTAB_MINE, subTabColour(SUBTAB_MINE),
+			Component.translatable("screen.capitol.book.subtab.mine"), SUBTAB_MINE == openSubTab,
+			() -> selectSubTab(SUBTAB_MINE), null));
+		row.add(new CornerTab(SUBTAB_ALL, subTabColour(SUBTAB_ALL),
+			Component.translatable("screen.capitol.book.subtab.all"), SUBTAB_ALL == openSubTab,
+			() -> selectSubTab(SUBTAB_ALL), null));
 		// left-most last, so no piece can end up drawn over the tab to its right
 		row.sort(Comparator.comparingInt(Interactable::getX).reversed());
 		row.forEach(this::addInteractable);
 	}
 
+	// The Mail section's two fixed tabs neither of them editable.
+	private void addMailTabs() {
+		addTabRow(List.of(
+			tab(MAIL_TAB_INBOX, CAP_BLACK, "screen.capitol.book.mail_tab.inbox",
+				mailSubTab == MAIL_TAB_INBOX, () -> selectMailSubTab(MAIL_TAB_INBOX)),
+			tab(MAIL_TAB_SEND, CAP_BLACK, "screen.capitol.book.mail_tab.send",
+				mailSubTab == MAIL_TAB_SEND, () -> selectMailSubTab(MAIL_TAB_SEND))));
+	}
+
+	// The Team section's own three tabs, all in the Team ribbon's colour, none of them editable.
+	private void addTeamTabs() {
+		addTabRow(List.of(
+			tab(TEAM_TAB_MEMBERS, Section.TEAM.colour(), "screen.capitol.book.team_tab.members",
+				teamSubTab == TEAM_TAB_MEMBERS, () -> selectTeamSubTab(TEAM_TAB_MEMBERS)),
+			tab(TEAM_TAB_TEAM, Section.TEAM.colour(), "screen.capitol.book.team_tab.team",
+				teamSubTab == TEAM_TAB_TEAM, () -> selectTeamSubTab(TEAM_TAB_TEAM)),
+			tab(TEAM_TAB_CLAIMS, Section.TEAM.colour(), "screen.capitol.book.team_tab.claims",
+				teamSubTab == TEAM_TAB_CLAIMS, () -> selectTeamSubTab(TEAM_TAB_CLAIMS))));
+	}
+
+	private CornerTab tab(int index, int colour, String labelKey, boolean open, Runnable onClick) {
+		return new CornerTab(index, colour, Component.translatable(labelKey), open, onClick, null);
+	}
+
+	private void addTabRow(List<CornerTab> tabs) {
+		List<Interactable> row = new ArrayList<>(tabs);
+		row.sort(Comparator.comparingInt(Interactable::getX).reversed());
+		row.forEach(this::addInteractable);
+	}
+
+	
 	// opens a sub-tab, or closes it when it is the one already open
 	private void selectSubTab(int index) {
 		openSubTab = openSubTab == index ? -1 : index;
 		// a filter typed for one list must not thin the next one out
 		search.setValue("");
 		subClaimSearch.setValue("");
+		rebuild();
+	}
+
+	// The Team tabs never close: one is always open, and the member list is the default.
+	private void selectTeamSubTab(int index) {
+		if (teamSubTab == index) return;
+		teamSubTab = index;
+		rebuild();
+	}
+
+	// The Mail tabs toggle between the two
+	private void selectMailSubTab(int index) {
+		mailSubTab = mailSubTab == index ? -1 : index;
 		rebuild();
 	}
 
@@ -332,13 +417,30 @@ public class CapitolManagerMenu extends BookScreen {
 
 	private void openDialog() {
 		dialogOpen = true;
+		dialogTab = null;
+		deleteConfirm = false;
 		dialogColour = CAP_BLACK;
 		dialogName = new DialogNameField();
 		rebuild();
 	}
 
+	/** Opens the same dialog on an existing custom tab, prefilled so it can be renamed or deleted. */
+	private void openEditDialog(int index) {
+		TeamSubTab tab = customTab(index);
+		if (tab == null) return;
+		dialogOpen = true;
+		dialogTab = tab;
+		deleteConfirm = false;
+		dialogColour = tab.colour();
+		dialogName = new DialogNameField();
+		dialogName.setValue(tab.name());
+		rebuild();
+	}
+
 	private void closeDialog() {
 		dialogOpen = false;
+		dialogTab = null;
+		deleteConfirm = false;
 		dialogName = null;
 		rebuild();
 	}
@@ -385,6 +487,9 @@ public class CapitolManagerMenu extends BookScreen {
 			guiGraphics.drawString(this.font, note, this.leftPos + (PAGE_WIDTH - this.font.width(note)) / 2,
 				this.topPos + PAGE_HEIGHT / 2, LABEL_INK, true);
 		} else if (selected == Section.TEAM) {
+			// only the member list has rows to draw; the Team and Claims tabs hold nothing yet, and a
+			// page with nothing on it is left bare rather than written on
+			if (teamHasTabs() && teamSubTab != TEAM_TAB_MEMBERS) return;
 			renderMembers(guiGraphics, rowAt(mouseX, mouseY));
 		} else if (selected == Section.SUBCLAIMS) {
 			// a new tab arrives from the server, so the row follows the directory
@@ -392,6 +497,7 @@ public class CapitolManagerMenu extends BookScreen {
 			if (dialogOpen) return;  // the dialog is modal: the page behind it stays bare
 			renderSubClaims(guiGraphics, rowAt(mouseX, mouseY));
 		}
+		// the Mail tabs hold nothing yet, so their pages stay bare too
 	}
 
 	//the team section
@@ -410,22 +516,38 @@ public class CapitolManagerMenu extends BookScreen {
 		return teamSearchY() + BAR_HEIGHT + ROW_GAP + 1;
 	}
 
-	/** The sub-claim section's own field, one row under its corner tabs, and its rows under that. */
-	private static int subClaimSearchY() {
+	/**
+	 * The field and rows of any section that carries a corner-tab row: one row under the tabs for the
+	 * field, and the rows under that. The Team section borrows it too when its own tabs are shown.
+	 */
+	private static int tabbedSearchY() {
 		return subTabY() + CAP_HEIGHT + ROW_GAP;
 	}
 
-	private static int subClaimListY() {
-		return subClaimSearchY() + BAR_HEIGHT + ROW_GAP + 1;
+	private static int tabbedListY() {
+		return tabbedSearchY() + BAR_HEIGHT + ROW_GAP + 1;
+	}
+
+	/** Whether the open section draws a row of corner tabs, which pushes its content a row down. */
+	private boolean hasTabRow() {
+		return selected == Section.SUBCLAIMS || selected == Section.MAIL || teamHasTabs();
+	}
+
+	/**
+	 * Whether the Team section shows its own three tabs. Everyone sees the member list; a viewer who
+	 * may edit the team gets it as the first tab of a row, so the page can grow a Team and Claims tab.
+	 */
+	private boolean teamHasTabs() {
+		return selected == Section.TEAM && Permission.MANAGE_TEAM.hasPermission(ClientBookState.permissions());
 	}
 
 	/** Where the open section's field sits, and where its rows start. */
 	private int searchY() {
-		return selected == Section.SUBCLAIMS ? subClaimSearchY() : teamSearchY();
+		return hasTabRow() ? tabbedSearchY() : teamSearchY();
 	}
 
 	private int listY() {
-		return selected == Section.SUBCLAIMS ? subClaimListY() : teamListY();
+		return hasTabRow() ? tabbedListY() : teamListY();
 	}
 
 	private int rowAt(double mouseX, double mouseY) {
@@ -599,22 +721,30 @@ public class CapitolManagerMenu extends BookScreen {
 	//sub-tabs
 
 	// one sub tab, lifted while it is open or hovered
-	private final class SubTabPiece implements Interactable {
+	private final class CornerTab implements Interactable {
 
 		private final int index;
+		private final int colour;
+		private final Component label;
+		private final boolean open;
+		private final Runnable onClick;
+		@Nullable
+		private final Runnable onRightClick;
 		private boolean hovered;
 
-		private SubTabPiece(int index) {
+		private CornerTab(int index, int colour, Component label, boolean open, Runnable onClick,
+						  @Nullable Runnable onRightClick) {
 			this.index = index;
-		}
-
-		private boolean isOpen() {
-			return index == openSubTab;
+			this.colour = colour;
+			this.label = label;
+			this.open = open;
+			this.onClick = onClick;
+			this.onRightClick = onRightClick;
 		}
 
 		// the cap's flat end sits against the page, so it only reaches upward
 		private boolean isLifted() {
-			return isOpen() || hovered;
+			return open || hovered;
 		}
 
 		@Override
@@ -654,13 +784,13 @@ public class CapitolManagerMenu extends BookScreen {
 		public BoundingBox getBoundingBox() {
 			int x = getX();
 			int y = getY();
-			int left = index == SUBTAB_ALL ? x : x + (CAP_WIDTH - CAP_STEP);
+			int left = index == 0 ? x : x + (CAP_WIDTH - CAP_STEP);
 			return new BoundingBox(left, y - CAP_LIFT, x + CAP_WIDTH, y + CAP_HEIGHT);
 		}
 
 		@Override
 		public void render(GuiGraphics guiGraphics) {
-			Asset.Blit art = cap(subTabColour(index), CAP_WIDTH);
+			Asset.Blit art = cap(colour, CAP_WIDTH);
 			if (isLifted()) art.renderBlit(guiGraphics, getX(), getY() - CAP_LIFT, CAP_WIDTH, CAP_HEIGHT + CAP_LIFT);
 			else art.renderBlit(guiGraphics, getX(), getY());
 		}
@@ -679,17 +809,19 @@ public class CapitolManagerMenu extends BookScreen {
 		@Override
 		public Interactable clickStart(int x, int y) {
 			if (dialogOpen) return null;
-			selectSubTab(index);
+			onClick.run();
 			return this;
 		}
 
 		@Override
+		public void rightClickStart(int x, int y) {
+			if (dialogOpen || onRightClick == null) return;
+			onRightClick.run();
+		}
+
+		@Override
 		public @Nullable Component tooltip() {
-			if (dialogOpen) return null;
-			if (index == SUBTAB_ALL) return Component.translatable("screen.capitol.book.subtab.all");
-			if (index == SUBTAB_MINE) return Component.translatable("screen.capitol.book.subtab.mine");
-			TeamSubTab tab = customTab(index);
-			return tab == null ? null : Component.literal(tab.name());
+			return dialogOpen ? null : label;
 		}
 	}
 
@@ -780,10 +912,19 @@ public class CapitolManagerMenu extends BookScreen {
 		}
 	}
 
-	// --- the add-sub-tab dialog ---------------------------------------------------------------
+	//the "add-sub-tab" dialog
 
 	// the add-sub-tab dialog; while it is up it covers the page and takes every click
-	private final class AddDialog implements Interactable {
+	private final class SubTabDialog implements Interactable {
+
+		// A tab is being ediTe
+		private boolean editing() {
+			return dialogTab != null;
+		}
+
+		private int dialogHeight() {
+			return editing() ? DIALOG_HEIGHT_EDIT : DIALOG_HEIGHT;
+		}
 
 		private int panelX() {
 			return leftPos + (PAGE_WIDTH - DIALOG_WIDTH) / 2;
@@ -819,6 +960,11 @@ public class CapitolManagerMenu extends BookScreen {
 
 		private int buttonY() {
 			return panelY() + 80;
+		}
+
+		// Delete
+		private int dangerY() {
+			return panelY() + 100;
 		}
 
 		// Add only goes live once a name is typed
@@ -869,10 +1015,18 @@ public class CapitolManagerMenu extends BookScreen {
 			guiGraphics.fill(leftPos, topPos, leftPos + PAGE_WIDTH, topPos + PAGE_HEIGHT, DIALOG_DIM);
 			int x = panelX();
 			int y = panelY();
-			guiGraphics.fill(x, y, x + DIALOG_WIDTH, y + DIALOG_HEIGHT, SEARCH_EDGE);
-			guiGraphics.fill(x + 1, y + 1, x + DIALOG_WIDTH - 1, y + DIALOG_HEIGHT - 1, SEARCH_FILL);
+			int height = dialogHeight();
+			guiGraphics.fill(x, y, x + DIALOG_WIDTH, y + height, SEARCH_EDGE);
+			guiGraphics.fill(x + 1, y + 1, x + DIALOG_WIDTH - 1, y + height - 1, SEARCH_FILL);
 
-			Component title = Component.translatable("screen.capitol.book.subtab.dialog.title");
+			if (deleteConfirm) {
+				renderDeleteConfirm(guiGraphics, x, y);
+				return;
+			}
+
+			Component title = Component.translatable(editing()
+				? "screen.capitol.book.subtab.dialog.edit_title"
+				: "screen.capitol.book.subtab.dialog.title");
 			guiGraphics.drawString(font, title, x + (DIALOG_WIDTH - font.width(title)) / 2, y + 6, SEARCH_INK, false);
 
 			// the 1px ring framing the name field
@@ -891,15 +1045,36 @@ public class CapitolManagerMenu extends BookScreen {
 				cap(colour, CAP_ART_W).renderBlit(guiGraphics, chipX, top);
 			}
 
-			drawDialogButton(guiGraphics, x + 4, buttonWidth(),
-				Component.translatable("screen.capitol.book.subtab.dialog.create"), ready());
-			drawDialogButton(guiGraphics, x + 8 + buttonWidth(), buttonWidth(),
+			drawDialogButton(guiGraphics, x + 4, buttonY(), buttonWidth(),
+				Component.translatable(editing()
+					? "screen.capitol.book.subtab.dialog.save"
+					: "screen.capitol.book.subtab.dialog.create"), ready());
+			drawDialogButton(guiGraphics, x + 8 + buttonWidth(), buttonY(), buttonWidth(),
+				Component.translatable("screen.capitol.book.subtab.dialog.cancel"), true);
+
+			if (editing()) {
+				drawDialogButton(guiGraphics, x + 4, dangerY(), DIALOG_WIDTH - 8,
+					Component.translatable("screen.capitol.book.subtab.dialog.delete"), true);
+			}
+		}
+
+		/** The Delete step: the panel keeps its size but asks once more before the tab is removed. */
+		private void renderDeleteConfirm(GuiGraphics guiGraphics, int x, int y) {
+			Component title = Component.translatable("screen.capitol.book.subtab.dialog.delete_title");
+			guiGraphics.drawString(font, title, x + (DIALOG_WIDTH - font.width(title)) / 2, y + 6, SEARCH_INK, false);
+
+			Component ask = Component.translatable("screen.capitol.book.subtab.dialog.delete_confirm",
+				dialogTab == null ? "" : dialogTab.name());
+			guiGraphics.drawString(font, ask, x + (DIALOG_WIDTH - font.width(ask)) / 2, y + 30, SEARCH_INK, false);
+
+			drawDialogButton(guiGraphics, x + 4, buttonY(), buttonWidth(),
+				Component.translatable("screen.capitol.book.subtab.dialog.delete"), true);
+			drawDialogButton(guiGraphics, x + 8 + buttonWidth(), buttonY(), buttonWidth(),
 				Component.translatable("screen.capitol.book.subtab.dialog.cancel"), true);
 		}
 
 		// a paper chip with a centred label; a chip out of season is left pale
-		private void drawDialogButton(GuiGraphics guiGraphics, int x, int width, Component label, boolean live) {
-			int y = buttonY();
+		private void drawDialogButton(GuiGraphics guiGraphics, int x, int y, int width, Component label, boolean live) {
 			guiGraphics.fill(x, y, x + width, y + BUTTON_HEIGHT, SEARCH_EDGE);
 			guiGraphics.fill(x + 1, y + 1, x + width - 1, y + BUTTON_HEIGHT - 1, live ? SEARCH_FILL : 0xFFE4D9BE);
 			guiGraphics.drawString(font, label, x + (width - font.width(label)) / 2,
@@ -914,9 +1089,20 @@ public class CapitolManagerMenu extends BookScreen {
 		public Interactable clickStart(int x, int y) {
 			int px = panelX();
 			int py = panelY();
-			if (x < px || x >= px + DIALOG_WIDTH || y < py || y >= py + DIALOG_HEIGHT) {
+			if (x < px || x >= px + DIALOG_WIDTH || y < py || y >= py + dialogHeight()) {
 				// a click off the panel is a cancel
 				closeDialog();
+				return this;
+			}
+			if (deleteConfirm) {
+				if (inside(x, y, px + 4, buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
+					deleteSubTab();
+					return this;
+				}
+				if (inside(x, y, px + 8 + buttonWidth(), buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
+					closeDialog();
+					return this;
+				}
 				return this;
 			}
 			for (int colour = 0; colour < TeamSubTab.COLOURS; colour++) {
@@ -927,20 +1113,39 @@ public class CapitolManagerMenu extends BookScreen {
 				}
 			}
 			if (inside(x, y, px + 4, buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
-				createSubTab();
+				submit();
 				return this;
 			}
 			if (inside(x, y, px + 8 + buttonWidth(), buttonY(), buttonWidth(), BUTTON_HEIGHT)) {
 				closeDialog();
 				return this;
 			}
+			if (editing() && inside(x, y, px + 4, dangerY(), DIALOG_WIDTH - 8, BUTTON_HEIGHT)) {
+				// the first press only asks; the confirmation's own Delete sends the request. The rebuild
+				// takes the name field out so the confirmation reads as a panel of its own.
+				deleteConfirm = true;
+				rebuild();
+				return this;
+			}
 			return this;  // on the panel but on nothing: the dialog keeps the click
 		}
 
-		private void createSubTab() {
+		/** Add sends the new tab, Save renames the edited one; the server re-checks both. */
+		private void submit() {
 			if (!ready()) return;
-			// the server re-checks the name, the colour and the tab cap before storing any
-			PacketDistributor.sendToServer(new C2SCreateSubTab(dialogName.getValue().trim(), dialogColour));
+			String name = dialogName.getValue().trim();
+			if (editing()) {
+				PacketDistributor.sendToServer(new C2SRenameSubTab(dialogTab.id(), name, dialogColour));
+			} else {
+				// the server re-checks the name, the colour and the tab cap before storing any
+				PacketDistributor.sendToServer(new C2SCreateSubTab(name, dialogColour));
+			}
+			closeDialog();
+		}
+
+		private void deleteSubTab() {
+			if (dialogTab == null) return;
+			PacketDistributor.sendToServer(new C2SDeleteSubTab(dialogTab.id()));
 			closeDialog();
 		}
 	}

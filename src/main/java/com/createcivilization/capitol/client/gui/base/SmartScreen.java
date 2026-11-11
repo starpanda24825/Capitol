@@ -90,6 +90,12 @@ public abstract class SmartScreen extends Screen {
 				currentClick = v == null ? currentClick : v;
 			}
 			lastClick = currentClick;
+		} else if (button == 1) {
+			// a right click answers through the same way
+			for (Interactable interactable : List.copyOf(interactableList)) {
+				if (!interactable.getBoundingBox().isPositionInside((int) mouseX, (int) mouseY)) continue;
+				interactable.rightClickStart((int) mouseX, (int) mouseY);
+			}
 		}
 		return super.mouseClicked(mouseX, mouseY, button);
 	}

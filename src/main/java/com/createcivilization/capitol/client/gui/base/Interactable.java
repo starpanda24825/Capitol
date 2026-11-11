@@ -24,6 +24,10 @@ public interface Interactable {
 		if (isHidden()) return null;
 		return this;
 	}
+	// A secondary (right) click on the interactable; most woukd ignore it.
+	default void rightClickStart(int x, int y) {
+		if (isHidden()) return;
+	}
 	default void clickRelease(int x, int y) {
 		if (isHidden()) return;
 	}
@@ -209,6 +213,15 @@ public interface Interactable {
 				return interactable.clickStart(x, y);
 			}
 			return null;
+		}
+
+		@Override
+		public void rightClickStart(int x, int y) {
+			if (isHidden()) return;
+			for (Interactable interactable : getInteractableList()) {
+				if (!interactable.getBoundingBox().isPositionInside(x, y)) continue;
+				interactable.rightClickStart(x, y);
+			}
 		}
 
 		@Override

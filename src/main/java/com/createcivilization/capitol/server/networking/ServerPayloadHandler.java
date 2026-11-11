@@ -45,6 +45,8 @@ import com.createcivilization.capitol.common.networking.packets.C2SEditTeam;
 import com.createcivilization.capitol.common.networking.packets.C2SRequestTeamDirectory;
 import com.createcivilization.capitol.common.networking.packets.C2SRevokeInvite;
 import com.createcivilization.capitol.common.networking.packets.C2SCreateSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SRenameSubTab;
+import com.createcivilization.capitol.common.networking.packets.C2SDeleteSubTab;
 import com.createcivilization.capitol.common.data.TeamSubTab;
 import com.createcivilization.capitol.common.networking.packets.C2SOpenBook;
 import com.createcivilization.capitol.common.networking.packets.S2COpenManagerBook;
@@ -1131,6 +1133,48 @@ public class ServerPayloadHandler {
 		}
 		if (DatabaseManager.database.createTeamSubTab(team, name, request.colour()) == null) {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.limit"));
+			return;
+		}
+		sendAction(player, RoleManager.Check.allow());
+		TeamDirectoryManager.broadcast(team);
+	}
+
+	// Renames (and recolours) one of the viewer's custom sub-tabs, after the same checks as create.
+	public static void handleRenameSubTab(final C2SRenameSubTab request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		String name = request.name() == null ? "" : request.name().trim();
+		if (name.isEmpty() || name.length() > TeamSubTab.MAX_NAME) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_name"));
+			return;
+		}
+		if (request.colour() < 0 || request.colour() >= TeamSubTab.COLOURS) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_colour"));
+			return;
+		}
+		if (DatabaseManager.database.renameTeamSubTab(team, request.id(), name, request.colour()) == null) {
+			// either the tab is gone or another one already holds the name
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.rename_failed"));
+			return;
+		}
+		sendAction(player, RoleManager.Check.allow());
+		TeamDirectoryManager.broadcast(team);
+	}
+
+	// Deletes one of the viewer's custom sub-tabs.
+	public static void handleDeleteSubTab(final C2SDeleteSubTab request, final IPayloadContext context) {
+		Player player = context.player();
+		Team team = DatabaseManager.database.getPlayerTeam(player);
+		if (team == null) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
+			return;
+		}
+		if (!DatabaseManager.database.deleteTeamSubTab(team, request.id())) {
+			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.not_found"));
 			return;
 		}
 		sendAction(player, RoleManager.Check.allow());

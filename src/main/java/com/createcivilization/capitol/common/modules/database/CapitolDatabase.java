@@ -2686,6 +2686,61 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
+	 * Renames (and recolours) one of a team's sub-tabs, provided it still belongs to the team and
+	 * no other tab already holds the name.
+	 *
+	 * @param team   the team the tab must belong to
+	 * @param id     the tab's database id
+	 * @param name   the new name filter
+	 * @param colour index into the book sheet's five colours
+	 * @return the updated tab, or {@code null} when it is gone or the name is taken
+	 */
+	@Nullable
+	public TeamSubTab renameTeamSubTab(Team team, int id, String name, int colour) {
+		List<TeamSubTab> existing = getTeamSubTabs(team);
+		boolean found = false;
+		for (TeamSubTab tab : existing) {
+			if (tab.id() == id) {
+				found = true;
+			} else if (tab.name().equalsIgnoreCase(name)) {
+				return null;
+			}
+		}
+		if (!found) return null;
+		try (PreparedStatement ps = getConnection().prepareStatement(
+			"UPDATE team_sub_tabs SET name = ?, color = ? WHERE id = ?")) {
+			ps.setString(1, name);
+			ps.setInt(2, colour);
+			ps.setInt(3, id);
+			if (ps.executeUpdate() == 0) return null;
+			return new TeamSubTab(id, name, colour);
+		} catch (SQLException e) {
+			Capitol.LOGGER.error("Error while renaming team sub-tab in database.", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
+	 * Deletes one of a team's sub-tabs. Scoped to the team so a forged id cannot touch another team.
+	 *
+	 * @return whether a row was removed
+	 */
+	public boolean deleteTeamSubTab(Team team, int id) {
+		for (TeamSubTab tab : getTeamSubTabs(team)) {
+			if (tab.id() != id) continue;
+			try (PreparedStatement ps = getConnection().prepareStatement(
+				"DELETE FROM team_sub_tabs WHERE id = ?")) {
+				ps.setInt(1, id);
+				return ps.executeUpdate() > 0;
+			} catch (SQLException e) {
+				Capitol.LOGGER.error("Error while deleting team sub-tab in database.", e);
+				throw new RuntimeException(e);
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Returns the first sub-claim whose volume contains the given position, or null if none.
 	 *
 	 * @param dimension the dimension the position is in

@@ -47,6 +47,18 @@
 	"screen.capitol.book.subtab.dialog.colour":     "Colour",
 	"screen.capitol.book.subtab.dialog.create":     "Add",
 	"screen.capitol.book.subtab.dialog.cancel":     "Cancel",
+	"screen.capitol.book.subtab.dialog.edit_title":   "Edit Sub-Tab",
+	"screen.capitol.book.subtab.dialog.save":         "Save",
+	"screen.capitol.book.subtab.dialog.delete":       "Delete",
+	"screen.capitol.book.subtab.dialog.delete_title": "Delete Sub-Tab?",
+	"screen.capitol.book.subtab.dialog.delete_confirm": "Delete \"%s\"?",
+
+	"screen.capitol.book.team_tab.members":        "Members",
+	"screen.capitol.book.team_tab.team":           "Team",
+	"screen.capitol.book.team_tab.claims":         "Claims",
+
+	"screen.capitol.book.mail_tab.inbox":          "Inbox",
+	"screen.capitol.book.mail_tab.send":           "Send",
 
 	"screen.capitol.book.tab.team":                "Team",
 	"screen.capitol.book.tab.members":             "Members",
@@ -60,6 +72,8 @@
 	"commands.capitol.subtab.invalid_colour": "That is not one of the five sub-tab colours",
 	"commands.capitol.subtab.limit": "Your team already has its three custom sub-tabs",
 	"commands.capitol.subtab.duplicate": "Your team already has a sub-tab with that name",
+	"commands.capitol.subtab.not_found": "That sub-tab no longer exists",
+	"commands.capitol.subtab.rename_failed": "That name is already taken, or the sub-tab is gone",
 
 	"commands.capitol.not_in_team_error": "You are not in any team",
 	"commands.capitol.no_player_found": "There is no player called %s",
