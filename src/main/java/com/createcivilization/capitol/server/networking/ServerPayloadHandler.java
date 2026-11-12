@@ -1120,8 +1120,8 @@ public class ServerPayloadHandler {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_colour"));
 			return;
 		}
-		List<TeamSubTab> existing = DatabaseManager.database.getTeamSubTabs(team);
-		if (existing.size() >= TeamSubTab.MAX_PER_TEAM) {
+		List<TeamSubTab> existing = DatabaseManager.database.getTeamSubTabs(team, player.getUUID());
+		if (existing.size() >= TeamSubTab.MAX_PER_PLAYER) {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.limit"));
 			return;
 		}
@@ -1131,7 +1131,7 @@ public class ServerPayloadHandler {
 				return;
 			}
 		}
-		if (DatabaseManager.database.createTeamSubTab(team, name, request.colour()) == null) {
+		if (DatabaseManager.database.createTeamSubTab(team, player.getUUID(), name, request.colour()) == null) {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.limit"));
 			return;
 		}
@@ -1156,7 +1156,7 @@ public class ServerPayloadHandler {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.invalid_colour"));
 			return;
 		}
-		if (DatabaseManager.database.renameTeamSubTab(team, request.id(), name, request.colour()) == null) {
+		if (DatabaseManager.database.renameTeamSubTab(team, player.getUUID(), request.id(), name, request.colour()) == null) {
 			// either the tab is gone or another one already holds the name
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.rename_failed"));
 			return;
@@ -1173,7 +1173,7 @@ public class ServerPayloadHandler {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.not_in_team_error"));
 			return;
 		}
-		if (!DatabaseManager.database.deleteTeamSubTab(team, request.id())) {
+		if (!DatabaseManager.database.deleteTeamSubTab(team, player.getUUID(), request.id())) {
 			sendAction(player, RoleManager.Check.deny("commands.capitol.subtab.not_found"));
 			return;
 		}

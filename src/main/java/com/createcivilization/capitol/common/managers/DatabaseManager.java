@@ -15,7 +15,7 @@ import java.util.List;
 public class DatabaseManager {
 
 	// bump this whenever a migration is added below
-	private static final int SCHEMA_VERSION = 10;
+	private static final int SCHEMA_VERSION = 11;
 
 	public static CapitolDatabase database = new CapitolDatabase();
 
@@ -233,9 +233,19 @@ public class DatabaseManager {
 				"CREATE TABLE IF NOT EXISTS team_sub_tabs (" +
 					"id INTEGER PRIMARY KEY AUTOINCREMENT," +
 					"team_id TEXT NOT NULL," +
+					"owner_uuid TEXT NOT NULL," +
 					"name TEXT NOT NULL," +
 					"color INTEGER NOT NULL," +
 					"FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE)"
+			);
+
+			stmt.execute(
+				"CREATE TABLE IF NOT EXISTS sub_claim_player_permissions (" +
+					"sub_claim_id TEXT NOT NULL," +
+					"player_uuid TEXT NOT NULL," +
+					"permissions INTEGER NOT NULL DEFAULT 0," +
+					"PRIMARY KEY (sub_claim_id, player_uuid)," +
+					"FOREIGN KEY (sub_claim_id) REFERENCES sub_claims (id) ON DELETE CASCADE)"
 			);
 
 			if(SableCompat.LOADED){
@@ -416,6 +426,24 @@ public class DatabaseManager {
 			// the manager book's custom sub-tabs
 			inTransaction(DatabaseManager::migrateToV10);
 		}
+		if (current < 11) {
+			inTransaction(DatabaseManager::migrateToV11);
+		}
+	}
+
+	// v11: sub-tabs are personal (owner_uuid), and a sub-claim can carry a permission set PER PLAYER.
+	private static void migrateToV11() throws SQLException {
+		if (tableExists("team_sub_tabs") && !columnExists("team_sub_tabs", "owner_uuid"))
+			execute("ALTER TABLE team_sub_tabs ADD COLUMN owner_uuid TEXT NOT NULL DEFAULT ''");
+
+		execute("CREATE TABLE IF NOT EXISTS sub_claim_player_permissions (" +
+			"sub_claim_id TEXT NOT NULL," +
+			"player_uuid TEXT NOT NULL," +
+			"permissions INTEGER NOT NULL DEFAULT 0," +
+			"PRIMARY KEY (sub_claim_id, player_uuid)," +
+			"FOREIGN KEY (sub_claim_id) REFERENCES sub_claims (id) ON DELETE CASCADE)");
+
+		setSchemaVersion(11);
 	}
 
 	// v10: custom sub-tabs of the manager book's Team section, a name filter plus a colour per tab.

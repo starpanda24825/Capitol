@@ -72,7 +72,7 @@ public final class TeamDirectoryManager {
 			invites.add(new S2CTeamDirectory.InviteRow(invitee, nameOr(invitee, "?")));
 		}
 
-		return new S2CTeamDirectory(members, roles, invites, db().getTeamSubTabs(team),
+		return new S2CTeamDirectory(members, roles, invites, db().getTeamSubTabs(team, viewer.getUUID()),
 			op || Permission.KICK_MEMBERS.hasPermission(permissions),
 			op || Permission.ASSIGN_ROLES.hasPermission(permissions),
 			op || Permission.MANAGE_ROLES.hasPermission(permissions),

@@ -411,7 +411,7 @@ public class CapitolManagerMenu extends BookScreen {
 	// The add button on the ribbon, or -1 while they still have all three customs.
 	private int plusIndex() {
 		int customs = subTabs().size();
-		return customs < TeamSubTab.MAX_PER_TEAM ? customs + 2 : -1;
+		return customs < TeamSubTab.MAX_PER_PLAYER ? customs + 2 : -1;
 	}
 
 

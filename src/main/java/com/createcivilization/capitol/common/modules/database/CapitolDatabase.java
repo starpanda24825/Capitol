@@ -2639,15 +2639,17 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
-	 * Returns a team's custom sub-tabs, oldest first, so the book's tab row keeps its order.
+	 * Returns one player's own custom sub-tabs in a team, oldest first, so the book's tab row keeps its order.
 	 *
-	 * @param team the team to query
-	 * @return list of 'TeamSubTab's (may be empty)
+	 * @param team      the team to query
+	 * @param ownerUuid the player whose tabs are wanted
+	 * @return list of {@link TeamSubTab}s (may be empty)
 	 */
-	public List<TeamSubTab> getTeamSubTabs(Team team) {
+	public List<TeamSubTab> getTeamSubTabs(Team team, UUID ownerUuid) {
 		try (PreparedStatement ps = getConnection().prepareStatement(
-			"SELECT * FROM team_sub_tabs WHERE team_id = ? ORDER BY id ASC")) {
+			"SELECT * FROM team_sub_tabs WHERE team_id = ? AND owner_uuid = ? ORDER BY id ASC")) {
 			ps.setString(1, team.getId().toString());
+			ps.setString(2, ownerUuid.toString());
 			try (ResultSet rs = ps.executeQuery()) {
 				List<TeamSubTab> tabs = new ArrayList<>();
 				while (rs.next()) tabs.add(new TeamSubTab(rs.getInt("id"), rs.getString("name"), rs.getInt("color")));
@@ -2660,21 +2662,22 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
-	 * Inserts a team's sub-tab and returns it, or null when the team is already at
-	 * TeamSubTab.MAX_PER_TEAM tabs or already has one under that name.
+	 * Inserts a player's sub-tab and returns it, or null when they are already at
+	 * TeamSubTab.MAX_PER_PLAYER tabs or already have one under that name.
 	 */
 	@Nullable
-	public TeamSubTab createTeamSubTab(Team team, String name, int colour) {
-		List<TeamSubTab> existing = getTeamSubTabs(team);
-		if (existing.size() >= TeamSubTab.MAX_PER_TEAM) return null;
+	public TeamSubTab createTeamSubTab(Team team, UUID ownerUuid, String name, int colour) {
+		List<TeamSubTab> existing = getTeamSubTabs(team, ownerUuid);
+		if (existing.size() >= TeamSubTab.MAX_PER_PLAYER) return null;
 		for (TeamSubTab tab : existing) {
 			if (tab.name().equalsIgnoreCase(name)) return null;
 		}
 		try (PreparedStatement ps = getConnection().prepareStatement(
-			"INSERT INTO team_sub_tabs (team_id, name, color) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+			"INSERT INTO team_sub_tabs (team_id, owner_uuid, name, color) VALUES (?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
 			ps.setString(1, team.getId().toString());
-			ps.setString(2, name);
-			ps.setInt(3, colour);
+			ps.setString(2, ownerUuid.toString());
+			ps.setString(3, name);
+			ps.setInt(4, colour);
 			ps.executeUpdate();
 			try (ResultSet keys = ps.getGeneratedKeys()) {
 				return keys.next() ? new TeamSubTab(keys.getInt(1), name, colour) : null;
@@ -2686,18 +2689,19 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
-	 * Renames (and recolours) one of a team's sub-tabs, provided it still belongs to the team and
-	 * no other tab already holds the name.
+	 * Renames (and recolours) one of a player's own sub-tabs, provided it still belongs to them and
+	 * no other of their tabs already holds the name.
 	 *
-	 * @param team   the team the tab must belong to
-	 * @param id     the tab's database id
-	 * @param name   the new name filter
-	 * @param colour index into the book sheet's five colours
+	 * @param team      the team the tab must belong to
+	 * @param ownerUuid the player the tab must belong to
+	 * @param id        the tab's database id
+	 * @param name      the new name filter
+	 * @param colour    index into the book sheet's five colours
 	 * @return the updated tab, or {@code null} when it is gone or the name is taken
 	 */
 	@Nullable
-	public TeamSubTab renameTeamSubTab(Team team, int id, String name, int colour) {
-		List<TeamSubTab> existing = getTeamSubTabs(team);
+	public TeamSubTab renameTeamSubTab(Team team, UUID ownerUuid, int id, String name, int colour) {
+		List<TeamSubTab> existing = getTeamSubTabs(team, ownerUuid);
 		boolean found = false;
 		for (TeamSubTab tab : existing) {
 			if (tab.id() == id) {
@@ -2708,10 +2712,11 @@ public class CapitolDatabase extends Database {
 		}
 		if (!found) return null;
 		try (PreparedStatement ps = getConnection().prepareStatement(
-			"UPDATE team_sub_tabs SET name = ?, color = ? WHERE id = ?")) {
+			"UPDATE team_sub_tabs SET name = ?, color = ? WHERE id = ? AND owner_uuid = ?")) {
 			ps.setString(1, name);
 			ps.setInt(2, colour);
 			ps.setInt(3, id);
+			ps.setString(4, ownerUuid.toString());
 			if (ps.executeUpdate() == 0) return null;
 			return new TeamSubTab(id, name, colour);
 		} catch (SQLException e) {
@@ -2721,16 +2726,18 @@ public class CapitolDatabase extends Database {
 	}
 
 	/**
-	 * Deletes one of a team's sub-tabs. Scoped to the team so a forged id cannot touch another team.
+	 * Deletes one of a player's own sub-tabs. Scoped to the team and the player, so a forged id
+	 * cannot touch another team's or another player's tab.
 	 *
 	 * @return whether a row was removed
 	 */
-	public boolean deleteTeamSubTab(Team team, int id) {
-		for (TeamSubTab tab : getTeamSubTabs(team)) {
+	public boolean deleteTeamSubTab(Team team, UUID ownerUuid, int id) {
+		for (TeamSubTab tab : getTeamSubTabs(team, ownerUuid)) {
 			if (tab.id() != id) continue;
 			try (PreparedStatement ps = getConnection().prepareStatement(
-				"DELETE FROM team_sub_tabs WHERE id = ?")) {
+				"DELETE FROM team_sub_tabs WHERE id = ? AND owner_uuid = ?")) {
 				ps.setInt(1, id);
+				ps.setString(2, ownerUuid.toString());
 				return ps.executeUpdate() > 0;
 			} catch (SQLException e) {
 				Capitol.LOGGER.error("Error while deleting team sub-tab in database.", e);

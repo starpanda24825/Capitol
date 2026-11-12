@@ -5,17 +5,17 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 
 /**
- * One custom sub-tab of the manager's Team section: a colour and a name the team's
+ * One custom sub-tab of the manager's Sub-Claim section: a colour and a name the team's
  * sub-claims are filtered by, so a tab lists the sub-claims whose name contains it.
  *
  * @param id     database id, unique per row
  * @param name   the filter text, also the tab's tooltip
- * @param colour index into the book sheet's five colours
+ * @param colour index into the texture sheet's five colours
  */
 public record TeamSubTab(int id, String name, int colour) {
 
 	// How many custom tabs one team may make; the two defaults never count.
-	public static final int MAX_PER_TEAM = 3;
+	public static final int MAX_PER_PLAYER = 3;
 
 	// Longest filter text accepted, so a tab's tooltip stays readable.
 	public static final int MAX_NAME = 24;
